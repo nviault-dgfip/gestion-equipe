@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion Équipe</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+   
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">🏠 Accueil</a>
+            <span class="navbar-text text-white">⚙️ Base Collaborateurs</span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for category, message in messages %}
+              <div class="alert alert-{{ category }} show">{{ message }}</div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>Membres de l'équipe</h2>
+            <button class="btn btn-primary" onclick="openModal()"><i class="fas fa-plus"></i> Ajouter</button>
+        </div>
+
+        <div class="card shadow">
+            <div class="card-body">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Identité</th>
+                            <th>Statut / Société</th>
+                            <th>Info Commandes</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for m in team %}
+                        <tr>
+                            <td><strong>{{ m.nom|upper }}</strong> {{ m.prenom }}</td>
+                            <td>
+                                {% if m.type == 'interne' %}
+                                    <span class="badge bg-secondary">Interne</span>
+                                {% else %}
+                                    <span class="badge bg-success">Prestataire</span><br>
+                                    <small class="text-muted">{{ m.societe }}</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if m.type == 'prestataire' and m.bons_commande %}
+                                    <small class="text-muted">
+                                        {{ m.bons_commande|length }} BC(s).
+                                        En cours : Chorus {{ m.bons_commande[0].chorus_id }} / IBIS {{ m.bons_commande[0].ibis_id }}
+                                    </small>
+                                {% else %} - {% endif %}
+                            </td>
+                            <td class="text-end">
+                                <button class="btn btn-sm btn-outline-primary" onclick='editMember({{ m | tojson }})'><i class="fas fa-edit"></i></button>
+                                <form action="/equipe/delete/{{ m.id }}" method="POST" class="d-inline" onsubmit="return confirm('Supprimer ?');">
+                                    <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="memberModal" tabindex="-1">
+        <div class="modal-dialog modal-xl"> <div class="modal-content">
+                <form action="/equipe/save" method="POST">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="modalTitle">Fiche Membre</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" name="id" id="field_id">
+
+                        <div class="row mb-3">
+                            <div class="col-md-2">
+                                <label class="form-label">Type</label>
+                                <select class="form-select" name="type" id="field_type" onchange="togglePrestaFields()" required>
+                                    <option value="interne">Interne</option>
+                                    <option value="prestataire">Prestataire</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Nom</label>
+                                <input type="text" class="form-control" name="nom" id="field_nom" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label">Prénom</label>
+                                <input type="text" class="form-control" name="prenom" id="field_prenom" required>
+                            </div>
+                            <div class="col-md-3 presta-only" style="display:none;">
+                                <label class="form-label">Société (Prestataire)</label>
+                                <input type="text" class="form-control" name="societe" id="field_societe" placeholder="Ex: Capgemini">
+                            </div>
+                            <div class="col-md-1 presta-only" style="display:none;">
+                                <label class="form-label">% Prés.</label>
+                                <input type="number" class="form-control" name="presence_pct" id="field_pct" value="100">
+                            </div>
+                        </div>
+
+                        <div id="prestaFields" class="presta-only" style="display:none; background-color: #f8f9fa; padding: 15px; border-radius: 5px;">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <h6 class="text-primary m-0">Historique des Commandes (Chorus / IBIS)</h6>
+                                <button type="button" class="btn btn-sm btn-success" onclick="addBCRow()">
+                                    <i class="fas fa-plus"></i> Ajouter Commande
+                                </button>
+                            </div>
+                           
+                            <table class="table table-sm table-bordered bg-white">
+                                <thead>
+                                    <tr class="table-light small text-center">
+                                        <th>N° CHORUS</th>
+                                        <th>N° IBIS</th>
+                                        <th style="width: 80px;">Jours</th>
+                                        <th style="width: 80px;">TJM €</th>
+                                        <th>Début Commande</th>
+                                        <th>Total K€ (Auto)</th>
+                                        <th style="width: 40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bcContainer"></tbody>
+                            </table>
+                            <small class="text-muted">Le montant total en K€ est calculé automatiquement (Jours x TJM).</small>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                        <button type="submit" class="btn btn-primary">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const myModal = new bootstrap.Modal(document.getElementById('memberModal'));
+
+        function togglePrestaFields() {
+            const isPresta = document.getElementById('field_type').value === 'prestataire';
+            document.querySelectorAll('.presta-only').forEach(el => el.style.display = isPresta ? 'block' : 'none');
+        }
+
+        function addBCRow(data = null) {
+            const container = document.getElementById('bcContainer');
+            const row = document.createElement('tr');
+           
+            let val_chorus = data ? data.chorus_id : '';
+            let val_ibis = data ? data.ibis_id : '';
+            let val_jours = data ? data.jours_commandes : '';
+            let val_tjm = data ? data.tjm_ht : '';
+            let val_debut = data ? data.date_debut : '';
+           
+            // Estimation Début
+            if (!data && container.rows.length > 0) {
+                const lastRow = container.rows[container.rows.length - 1];
+                const lastStart = lastRow.querySelector('input[name="bc_debut[]"]').value;
+                const lastDays = parseFloat(lastRow.querySelector('input[name="bc_jours[]"]').value) || 0;
+                if (lastStart && lastDays > 0) {
+                    const d = new Date(lastStart);
+                    d.setDate(d.getDate() + Math.ceil(lastDays * 1.45)); // Approx ouvrés
+                    val_debut = d.toISOString().split('T')[0];
+                }
+            }
+           
+            // Calcul Montant KE affiché (visuel seulement)
+            let montantK = (val_jours && val_tjm) ? ((val_jours * val_tjm)/1000).toFixed(2) : '-';
+
+            row.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm" name="bc_chorus[]" value="${val_chorus}" placeholder="EJ-..."></td>
+                <td><input type="text" class="form-control form-control-sm" name="bc_ibis[]" value="${val_ibis}" placeholder="IB-..."></td>
+                <td><input type="number" step="0.5" class="form-control form-control-sm" name="bc_jours[]" value="${val_jours}" onchange="calcK(this)"></td>
+                <td><input type="number" step="0.1" class="form-control form-control-sm" name="bc_tjm[]" value="${val_tjm}" onchange="calcK(this)"></td>
+                <td><input type="date" class="form-control form-control-sm" name="bc_debut[]" value="${val_debut}"></td>
+                <td class="text-center align-middle bg-light"><span class="k-amount fw-bold text-secondary">${montantK}</span></td>
+                <td class="text-center">
+                    <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button>
+                </td>
+            `;
+            container.appendChild(row);
+        }
+
+        function calcK(input) {
+            const row = input.closest('tr');
+            const jours = parseFloat(row.querySelector('input[name="bc_jours[]"]').value) || 0;
+            const tjm = parseFloat(row.querySelector('input[name="bc_tjm[]"]').value) || 0;
+            const total = (jours * tjm) / 1000;
+            row.querySelector('.k-amount').innerText = total > 0 ? total.toFixed(2) : '-';
+        }
+
+        function openModal() {
+            document.getElementById('modalTitle').innerText = "Nouveau Membre";
+            document.getElementById('field_id').value = "";
+            document.getElementById('field_nom').value = "";
+            document.getElementById('field_prenom').value = "";
+            document.getElementById('field_societe').value = "";
+            document.getElementById('bcContainer').innerHTML = "";
+            document.getElementById('field_type').value = "interne";
+            togglePrestaFields();
+            myModal.show();
+        }
+
+        function editMember(member) {
+            document.getElementById('modalTitle').innerText = "Modifier " + member.prenom;
+            document.getElementById('field_id').value = member.id;
+            document.getElementById('field_nom').value = member.nom;
+            document.getElementById('field_prenom').value = member.prenom;
+            document.getElementById('field_type').value = member.type;
+           
+            if (member.type === 'prestataire') {
+                document.getElementById('field_societe').value = member.societe || "";
+                document.getElementById('field_pct').value = member.presence_pct || 100;
+                document.getElementById('bcContainer').innerHTML = "";
+               
+                if (member.bons_commande) {
+                    member.bons_commande
+                        .sort((a,b) => (a.date_debut > b.date_debut) ? 1 : -1)
+                        .forEach(bc => addBCRow(bc));
+                } else {
+                    addBCRow();
+                }
+            }
+            togglePrestaFields();
+            myModal.show();
+        }
+    </script>
+</body>
+</html>
