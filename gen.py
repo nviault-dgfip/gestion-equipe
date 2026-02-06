@@ -6,7 +6,14 @@ import calendar
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import PatternFill, Alignment, Border, Side, Font
 
+"""
+Script de génération du template de planning Excel.
+Ce script crée un fichier Excel avec un onglet par mois, pré-rempli avec les dates
+et les membres de l'équipe, prêt à être utilisé pour la saisie de l'activité.
+"""
+
 # --- CONFIGURATION DE L'ÉQUIPE ---
+# Liste des membres à inclure dans le planning
 team_members = [
     "Martin Dupont",
     "Julie Durand",

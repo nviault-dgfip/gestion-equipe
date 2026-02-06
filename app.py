@@ -18,7 +18,10 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # --- FONCTIONS UTILITAIRES ---
 
 def load_team():
-    """Charge l'équipe et gère la migration des anciennes données si nécessaire"""
+    """
+    Charge la liste des membres de l'équipe depuis le fichier JSON.
+    Retourne une liste vide si le fichier n'existe pas ou est invalide.
+    """
     if not os.path.exists(JSON_FILE): return []
     with open(JSON_FILE, 'r') as f:
         try:
@@ -28,16 +31,27 @@ def load_team():
     return data
 
 def save_team_json(data):
+    """Sauvegarde la liste des membres de l'équipe dans le fichier JSON."""
     with open(JSON_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 def is_holiday_or_weekend(target_date):
+    """
+    Vérifie si une date donnée est un week-end ou un jour férié en France.
+    """
     if target_date.weekday() >= 5: return True
     res = jours_feries_france.JoursFeries.for_year(target_date.year)
     if target_date in res.values(): return True
     return False
 
 def calculate_end_date(start_date_str, days_to_consume, presence_pct):
+    """
+    Calcule la date de fin estimée d'un bon de commande en fonction :
+    - De la date de début
+    - Du nombre de jours à consommer
+    - Du pourcentage de présence du prestataire
+    - Des jours ouvrés (hors week-ends et jours fériés)
+    """
     if days_to_consume <= 0: return "Terminé"
     daily_burn = presence_pct / 100.0
     if daily_burn == 0: return "Jamais"
@@ -47,7 +61,7 @@ def calculate_end_date(start_date_str, days_to_consume, presence_pct):
         current_date = date.today()
 
     remaining_days = days_to_consume
-    max_iter = 365 * 5
+    max_iter = 365 * 5 # Sécurité pour éviter les boucles infinies
     i = 0
     while remaining_days > 0 and i < max_iter:
         current_date += timedelta(days=1)
@@ -58,7 +72,11 @@ def calculate_end_date(start_date_str, days_to_consume, presence_pct):
     return current_date.strftime("%d/%m/%Y")
 
 def process_excel(filepath):
-    """Analyse Excel (inchangé)"""
+    """
+    Analyse le fichier Excel de planning pour calculer la consommation par membre.
+    Le fichier doit contenir des colonnes correspondant aux noms des membres.
+    Une cellule contenant 'X' (minuscule ou majuscule) compte pour 0.5 jour (une demi-journée).
+    """
     try:
         xls = pd.read_excel(filepath, sheet_name=None, engine='openpyxl')
         consumption = {}
@@ -80,7 +98,11 @@ def process_excel(filepath):
         return {}
 
 def generate_report_dataframe(conso_map, team):
-    """Génère le rapport avec les colonnes spécifiques demandées"""
+    """
+    Génère un DataFrame Pandas contenant le rapport de suivi des prestataires.
+    Associe les données de consommation issues de l'Excel aux informations des BC
+    définies dans l'équipe.
+    """
     report_data = []
     prestataires = [p for p in team if p.get('type') == 'prestataire']
    
