@@ -3,6 +3,8 @@ import pandas as pd
 import numpy as np
 from datetime import date
 import calendar
+import json
+import os
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import PatternFill, Alignment, Border, Side, Font
 
@@ -13,14 +15,27 @@ et les membres de l'équipe, prêt à être utilisé pour la saisie de l'activit
 """
 
 # --- CONFIGURATION DE L'ÉQUIPE ---
+def load_team_members():
+    """Charge les membres de l'équipe depuis le JSON ou utilise une liste par défaut."""
+    json_file = 'equipe.json'
+    if os.path.exists(json_file):
+        try:
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                return [f"{m['prenom']} {m['nom']}" for m in data]
+        except Exception as e:
+            print(f"Erreur lors de la lecture de {json_file}: {e}")
+
+    return [
+        "Martin Dupont",
+        "Julie Durand",
+        "Luc Lefebvre",
+        "Sophie Martin",
+        "Thomas Petit"
+    ]
+
 # Liste des membres à inclure dans le planning
-team_members = [
-    "Martin Dupont",
-    "Julie Durand",
-    "Luc Lefebvre",
-    "Sophie Martin",
-    "Thomas Petit"
-]
+team_members = load_team_members()
 
 year = 2026
 

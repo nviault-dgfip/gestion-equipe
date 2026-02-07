@@ -38,6 +38,7 @@
                     </div>
                     <div class="card-body p-4">
                         <form method="post" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <input class="form-control form-control-lg mb-4" type="file" name="file" accept=".xlsx" required>
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-success btn-lg">Analyser et Voir le Rapport</button>
