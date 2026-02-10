@@ -362,6 +362,7 @@ def equipe_save():
                     "date_debut": debuts[i],
                     "tjm_ht": tjm_val,
                     "uos": bc_uos
+                    "tjm_ht": tjm_val
                 })
         new_member['bons_commande'] = bcs
 
