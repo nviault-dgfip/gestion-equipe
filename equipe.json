@@ -34,6 +34,87 @@
                         "date_demande": "2026-02-10",
                         "service_fait_id": "",
                         "percentage": 10.0
+        "type": "interne",
+        "nom": "Dupont",
+        "prenom": "Martin",
+        "societe": "",
+        "presence_pct": 100
+    },
+    {
+        "id": 2,
+        "type": "prestataire",
+        "nom": "Durand",
+        "prenom": "Julie",
+        "societe": "Capgemini",
+        "presence_pct": 100,
+        "bons_commande": [
+            {
+                "chorus_id": "EJ-2026-001",
+                "ibis_id": "IB-001",
+                "jours_commandes": 20.0,
+                "date_debut": "2026-01-05",
+                "moment_debut": "Matin",
+                "tjm_ht": 1000.0,
+                "uos": [
+                    {
+                        "code": "DEVM",
+                        "quantite": 20
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": 3,
+        "type": "prestataire",
+        "nom": "Lefebvre",
+        "prenom": "Luc",
+        "societe": "Sopra Steria",
+        "presence_pct": 100,
+        "bons_commande": [
+            {
+                "chorus_id": "EJ-2026-002",
+                "ibis_id": "IB-002",
+                "jours_commandes": 15.0,
+                "date_debut": "2026-02-01",
+                "moment_debut": "Matin",
+                "tjm_ht": 1000.0,
+                "uos": [
+                    {
+                        "code": "IMPLM",
+                        "quantite": 15
+                    }
+                ]
+            }
+        ]
+    },
+    {
+        "id": 4,
+        "type": "interne",
+        "nom": "Martin",
+        "prenom": "Sophie",
+        "societe": "",
+        "presence_pct": 100
+    },
+    {
+        "id": 5,
+        "type": "prestataire",
+        "nom": "Petit",
+        "prenom": "Thomas",
+        "societe": "Atos",
+        "presence_pct": 80,
+        "bons_commande": [
+            {
+                "chorus_id": "EJ-2026-003",
+                "ibis_id": "IB-003",
+                "jours_commandes": 10.0,
+                "date_debut": "2026-01-10",
+                "moment_debut": "Après-midi",
+                "tjm_ht": 1000.0,
+                "uos": [
+                    {
+                        "code": "AUDITM",
+                        "quantite": 10
                     }
                 ]
             }
