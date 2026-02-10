@@ -1,1 +1,1 @@
-[]
+[{"id": 1, "nom": "Half", "prenom": "CHRONO", "type": "prestataire", "societe": "HalfCorp", "presence_pct": 100, "bons_commande": [{"chorus_id": "EJ-HALF-1", "ibis_id": "", "jours_commandes": 0.5, "date_debut": "2026-01-05", "moment_debut": "Matin", "tjm_ht": 500.0, "uos": []}, {"chorus_id": "EJ-HALF-2", "ibis_id": "", "jours_commandes": 1.0, "date_debut": "2026-01-05", "moment_debut": "Apr\u00e8s-midi", "tjm_ht": 500.0, "uos": []}]}]

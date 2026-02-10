@@ -66,32 +66,45 @@ def is_holiday_or_weekend(target_date):
     if target_date in holidays: return True
     return False
 
-def calculate_end_date(start_date_str, days_to_consume, presence_pct):
+def calculate_end_date(start_date_str, start_moment, days_to_consume, presence_pct):
     """
     Calcule la date de fin estimée d'un bon de commande en fonction :
-    - De la date de début
+    - De la date de début et du moment (Matin/Après-midi)
     - Du nombre de jours à consommer
     - Du pourcentage de présence du prestataire
     - Des jours ouvrés (hors week-ends et jours fériés)
+    Retourne une chaîne formatée "JJ/MM/AAAA (Moment)"
     """
     if days_to_consume <= 0: return "Terminé"
-    daily_burn = presence_pct / 100.0
-    if daily_burn == 0: return "Jamais"
+    # Burn par demi-journée
+    half_day_burn = (presence_pct / 100.0) / 2.0
+    if half_day_burn <= 0: return "Jamais"
+
     try:
         current_date = datetime.strptime(str(start_date_str), "%Y-%m-%d").date()
     except:
         current_date = date.today()
 
-    remaining_days = days_to_consume
-    max_iter = 365 * 5 # Sécurité pour éviter les boucles infinies
+    current_moment = start_moment if start_moment in ["Matin", "Après-midi"] else "Matin"
+    remaining_days = float(days_to_consume)
+
+    max_iter = 365 * 10 # Sécurité 5 ans en demi-journées
     i = 0
-    while remaining_days > 0 and i < max_iter:
-        current_date += timedelta(days=1)
-        i += 1
+    while remaining_days > 0.0001 and i < max_iter:
         if not is_holiday_or_weekend(current_date):
-            remaining_days -= daily_burn
+            remaining_days -= half_day_burn
+            if remaining_days <= 0.0001:
+                break
+
+        # Passage à la demi-journée suivante
+        if current_moment == "Matin":
+            current_moment = "Après-midi"
+        else:
+            current_moment = "Matin"
+            current_date += timedelta(days=1)
+        i += 1
            
-    return current_date.strftime("%d/%m/%Y")
+    return f"{current_date.strftime('%d/%m/%Y')} ({current_moment})"
 
 def process_excel(filepath, limit_date=None):
     """
@@ -182,6 +195,7 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
             days_ordered = float(bc.get('jours_commandes', 0))
             tjm = float(bc.get('tjm_ht', 0))
             start_date = bc.get('date_debut', date.today().strftime("%Y-%m-%d"))
+            start_moment = bc.get('moment_debut', 'Matin')
            
             # Calcul du montant total du BC en K€ (HT)
             montant_k = (days_ordered * tjm) / 1000.0
@@ -196,18 +210,21 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
                 conso_bc = consumed_buffer
                 etat = "En cours"
                 consumed_buffer = 0
-                # Correction : Calcul de la fin estimée à partir de la date de référence
+                # Calcul de la fin estimée à partir de la date de référence
                 remaining_days = days_ordered - conso_bc
-                # On commence le calcul au lendemain de la date d'analyse
-                start_calc = (datetime.strptime(ref_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
-                fin_estimee = calculate_end_date(start_calc, remaining_days, pct_presence)
+                # On commence le calcul au lendemain de la date d'analyse (Matin)
+                start_calc_dt = datetime.strptime(ref_date, "%Y-%m-%d") + timedelta(days=1)
+                fin_estimee = calculate_end_date(start_calc_dt.strftime("%Y-%m-%d"), "Matin", remaining_days, pct_presence)
             else:
                 conso_bc = 0
                 etat = "Futur"
                 # Pour un BC futur, on commence soit à la date de début du BC,
-                # soit après la date de référence si le BC a théoriquement déjà commencé
-                start_calc = max(start_date, ref_date)
-                fin_estimee = calculate_end_date(start_calc, days_ordered, pct_presence)
+                # soit au lendemain de la date de référence si le BC a théoriquement déjà commencé
+                if start_date > ref_date:
+                    fin_estimee = calculate_end_date(start_date, start_moment, days_ordered, pct_presence)
+                else:
+                    start_calc_dt = datetime.strptime(ref_date, "%Y-%m-%d") + timedelta(days=1)
+                    fin_estimee = calculate_end_date(start_calc_dt.strftime("%Y-%m-%d"), "Matin", days_ordered, pct_presence)
            
             # Détail des UOs pour affichage
             uos = bc.get('uos', [])
@@ -224,7 +241,7 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
                 "Jours Commandés": days_ordered,
                 "NOM Prénom": nom_complet_display,
                 "TJM (HT) €": f"{tjm:.2f}",
-                "Date début": start_date,
+                "Date début": f"{start_date} ({start_moment})",
                 "Jours Consommés": conso_bc,
                 "Jours Restants": days_ordered - conso_bc,
                 "Fin Estimée": fin_estimee
@@ -335,6 +352,7 @@ def equipe_save():
         ibis = data.getlist('bc_ibis[]')
         jours = data.getlist('bc_jours[]')
         debuts = data.getlist('bc_debut[]')
+        moments = data.getlist('bc_moment[]')
         tjms = data.getlist('bc_tjm[]')
         uos_json = data.getlist('bc_uos_json[]')
        
@@ -344,6 +362,7 @@ def equipe_save():
                 try:
                     jours_val = float(jours[i] or 0)
                     tjm_val = float(tjms[i] or 0)
+                    moment_val = moments[i] if i < len(moments) else "Matin"
                     # Parsing du JSON des UOs
                     bc_uos = []
                     if i < len(uos_json) and uos_json[i]:
@@ -360,9 +379,9 @@ def equipe_save():
                     "ibis_id": ibis[i],
                     "jours_commandes": jours_val,
                     "date_debut": debuts[i],
+                    "moment_debut": moment_val,
                     "tjm_ht": tjm_val,
                     "uos": bc_uos
-                    "tjm_ht": tjm_val
                 })
         new_member['bons_commande'] = bcs
 
