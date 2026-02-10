@@ -83,16 +83,23 @@ def calculate_end_date(start_date_str, days_to_consume, presence_pct):
            
     return current_date.strftime("%d/%m/%Y")
 
-def process_excel(filepath):
+def process_excel(filepath, limit_date=None):
     """
     Analyse le fichier Excel de planning pour calculer la consommation par membre.
     Le fichier doit contenir des colonnes correspondant aux noms des membres.
     Une cellule contenant 'X' (minuscule ou majuscule) compte pour 0.5 jour (une demi-journée).
+    Si limit_date est fournie, on ignore les présences après cette date.
     """
     try:
         xls = pd.read_excel(filepath, sheet_name=None, engine='openpyxl')
         consumption = {}
         ignored = ["Paramètres_Equipe", "Parametres", "Config"]
+
+        if limit_date:
+            limit_dt = pd.to_datetime(limit_date).date()
+        else:
+            limit_dt = None
+
         for sheet, df in xls.items():
             if any(x in sheet for x in ignored): continue
             df.columns = df.columns.astype(str).str.strip()
@@ -107,7 +114,13 @@ def process_excel(filepath):
                     df.loc[0:first_valid_idx, 'Date'] = df['Date'].loc[first_valid_idx]
 
             df['Date'] = df['Date'].ffill()
-            cols = [c for c in df.columns if c not in ["Date", "Période"] and "Unnamed" not in c]
+
+            # Filtrage par date si demandé
+            if limit_dt:
+                df['Date_dt'] = pd.to_datetime(df['Date']).dt.date
+                df = df[df['Date_dt'] <= limit_dt]
+
+            cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt"] and "Unnamed" not in c]
             for member in cols:
                 if member not in consumption: consumption[member] = 0.0
                 sub = df[member].dropna().astype(str).str.upper().str.strip()
@@ -118,14 +131,16 @@ def process_excel(filepath):
         print(f"Erreur process: {e}")
         return {}
 
-def generate_report_dataframe(conso_map, team):
+def generate_report_dataframe(conso_map, team, analysis_date=None):
     """
     Génère un DataFrame Pandas contenant le rapport de suivi des prestataires.
     Associe les données de consommation issues de l'Excel aux informations des BC
     définies dans l'équipe.
+    analysis_date: Date de référence pour le calcul de la fin estimée.
     """
     report_data = []
     prestataires = [p for p in team if p.get('type') == 'prestataire']
+    ref_date = analysis_date if analysis_date else date.today().strftime("%Y-%m-%d")
    
     for p in prestataires:
         # Nom complet (Format "NOM Prénom")
@@ -171,13 +186,18 @@ def generate_report_dataframe(conso_map, team):
                 conso_bc = consumed_buffer
                 etat = "En cours"
                 consumed_buffer = 0
-                # Correction : Calcul de la fin estimée à partir d'aujourd'hui pour le reste à faire
+                # Correction : Calcul de la fin estimée à partir de la date de référence
                 remaining_days = days_ordered - conso_bc
-                fin_estimee = calculate_end_date(date.today().strftime("%Y-%m-%d"), remaining_days, pct_presence)
+                # On commence le calcul au lendemain de la date d'analyse
+                start_calc = (datetime.strptime(ref_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                fin_estimee = calculate_end_date(start_calc, remaining_days, pct_presence)
             else:
                 conso_bc = 0
                 etat = "Futur"
-                fin_estimee = calculate_end_date(start_date, days_ordered, pct_presence)
+                # Pour un BC futur, on commence soit à la date de début du BC,
+                # soit après la date de référence si le BC a théoriquement déjà commencé
+                start_calc = max(start_date, ref_date)
+                fin_estimee = calculate_end_date(start_calc, days_ordered, pct_presence)
            
             # Construction de la ligne selon vos propriétés demandées
             report_data.append({
@@ -204,16 +224,21 @@ def generate_report_dataframe(conso_map, team):
 def index():
     if request.method == 'POST':
         file = request.files.get('file')
+        analysis_date = request.form.get('analysis_date')
+        if not analysis_date:
+            analysis_date = date.today().strftime("%Y-%m-%d")
+
         if file:
             # Sécurité : Nom de fichier unique pour éviter les collisions
             filename = f"planning_{uuid.uuid4().hex}.xlsx"
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
             session['last_filepath'] = filepath
+            session['analysis_date'] = analysis_date
            
-            conso_map = process_excel(filepath)
+            conso_map = process_excel(filepath, limit_date=analysis_date)
             team = load_team()
-            df = generate_report_dataframe(conso_map, team)
+            df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
            
             df_web = df.copy()
             if not df_web.empty:
@@ -230,17 +255,18 @@ def index():
             table_html = df_web.to_html(classes="table table-striped table-bordered align-middle table-hover", index=False)
             return render_template('dashboard.html', table=table_html)
 
-    return render_template('index.html')
+    return render_template('index.html', today=date.today().strftime("%Y-%m-%d"))
 
 @app.route('/export_excel')
 def export_excel():
     filepath = session.get('last_filepath')
+    analysis_date = session.get('analysis_date')
     if not filepath or not os.path.exists(filepath):
         return "Aucun fichier. Importez d'abord.", 400
    
-    conso_map = process_excel(filepath)
+    conso_map = process_excel(filepath, limit_date=analysis_date)
     team = load_team()
-    df = generate_report_dataframe(conso_map, team)
+    df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
    
     # Nettoyage de la colonne 'État' pour l'export Excel (optionnel)
     if 'État' in df.columns:
