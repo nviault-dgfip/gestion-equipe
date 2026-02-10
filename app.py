@@ -172,6 +172,18 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
        
         # Consommation Totale - Matching amélioré pour éviter les ambiguïtés
         total_consumed = 0
+        p_nom = p.get('nom', '').lower().strip()
+        p_prenom = p.get('prenom', '').lower().strip()
+
+        if not p_nom and not p_prenom:
+            continue
+
+        for excel_name, val in conso_map.items():
+            en_lower = str(excel_name).lower().strip()
+            # Matching exact (dans les deux sens) ou présence des deux parties du nom
+            if en_lower == f"{p_prenom} {p_nom}" or \
+               en_lower == f"{p_nom} {p_prenom}" or \
+               (p_nom in en_lower and p_prenom in en_lower):
         name_parts = [p['nom'].lower(), p['prenom'].lower()]
 
         for excel_name, val in conso_map.items():
@@ -270,8 +282,18 @@ def index():
            
             conso_map = process_excel(filepath, limit_date=analysis_date)
             team = load_team()
+
+            prestataires = [p for p in team if p.get('type') == 'prestataire']
+            if not prestataires:
+                flash("Attention : Aucun prestataire n'est défini dans la base équipe. Veuillez d'abord ajouter des membres de type 'prestataire'.", "warning")
+                return redirect(url_for('equipe_index'))
+
             df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
            
+            if df.empty:
+                flash("Aucune donnée de bon de commande trouvée pour les prestataires définis.", "info")
+                return redirect(url_for('index'))
+
             df_web = df.copy()
             if not df_web.empty:
                 # Ordre des colonnes pour l'affichage Web

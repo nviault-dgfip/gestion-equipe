@@ -59,9 +59,13 @@
 
         <div class="card shadow-sm">
             <div class="card-body">
+                {% if table %}
                 <div class="table-responsive">
                     {{ table | safe }}
                 </div>
+                {% else %}
+                <div class="alert alert-info">Aucune donnée à afficher.</div>
+                {% endif %}
             </div>
         </div>
         <div class="mt-3 text-muted small no-print">
