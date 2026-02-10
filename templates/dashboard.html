@@ -26,7 +26,7 @@
         <div class="card p-3 mb-4 no-print shadow-sm">
             <div class="row align-items-center">
                 <div class="col-md-6">
-                    <label class="fw-bold me-3">Filtrer l'affichage :</label>
+                    <label class="fw-bold me-3">Statut BC :</label>
                     <div class="btn-group" role="group">
                         <input type="radio" class="btn-check" name="filterMode" id="btnAll" autocomplete="off" onclick="applyFilter('all')">
                         <label class="btn btn-outline-secondary" for="btnAll">Tout l'historique</label>
@@ -38,6 +38,15 @@
                 <div class="col-md-6 text-end">
                     <a href="/export_excel" class="btn btn-success me-2">📥 Excel</a>
                     <button onclick="window.print()" class="btn btn-danger">🖨️ PDF</button>
+                </div>
+            </div>
+            <hr>
+            <div class="row">
+                <div class="col-12">
+                    <label class="fw-bold mb-2">Colonnes à afficher :</label>
+                    <div id="columnSelectors" class="d-flex flex-wrap gap-2">
+                        <!-- Généré par JS -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -55,12 +64,11 @@
     </div>
 
     <script>
-        // Script de filtrage côté client
+        // Script de filtrage côté client (Lignes)
         function applyFilter(mode) {
             const table = document.querySelector("table");
             if (!table) return;
            
-            // On cherche l'index de la colonne "État"
             const headers = Array.from(table.querySelectorAll("th"));
             const etatIndex = headers.findIndex(th => th.innerText.trim() === "État");
            
@@ -72,7 +80,6 @@
                 if (cell) {
                     const txt = cell.innerText.trim();
                     if (mode === 'active') {
-                        // On cache si c'est "Terminé"
                         row.style.display = (txt === 'Terminé') ? 'none' : '';
                     } else {
                         row.style.display = '';
@@ -80,9 +87,45 @@
                 }
             });
         }
+
+        // Script de gestion des colonnes
+        function initColumnSelectors() {
+            const table = document.querySelector("table");
+            if (!table) return;
+
+            const headers = Array.from(table.querySelectorAll("th"));
+            const container = document.getElementById("columnSelectors");
+
+            headers.forEach((th, index) => {
+                const label = th.innerText.trim();
+                const div = document.createElement("div");
+                div.className = "form-check form-check-inline";
+
+                const id = "col_check_" + index;
+                div.innerHTML = `
+                    <input class="form-check-input" type="checkbox" id="${id}" checked onchange="toggleColumn(${index}, this.checked)">
+                    <label class="form-check-label small" for="${id}">${label}</label>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function toggleColumn(index, show) {
+            const table = document.querySelector("table");
+            if (!table) return;
+
+            // Header
+            table.querySelectorAll("tr").forEach(row => {
+                if (row.cells[index]) {
+                    row.cells[index].style.display = show ? "" : "none";
+                }
+            });
+        }
        
-        // Appliquer le filtre par défaut au chargement
-        document.addEventListener("DOMContentLoaded", () => applyFilter('active'));
+        document.addEventListener("DOMContentLoaded", () => {
+            initColumnSelectors();
+            applyFilter('active');
+        });
     </script>
 </body>
 </html>
