@@ -1,97 +1,41 @@
 [
     {
         "id": 1,
-        "type": "interne",
-        "nom": "Dupont",
-        "prenom": "Martin"
-    },
-    {
-        "id": 2,
-        "type": "interne",
-        "nom": "Durand",
-        "prenom": "Julie"
-    },
-    {
-        "id": 3,
-        "type": "interne",
-        "nom": "Lefebvre",
-        "prenom": "Luc"
-    },
-    {
-        "id": 4,
         "type": "prestataire",
-        "nom": "Martin",
-        "prenom": "Sophie",
-        "societe": "Capgemini",
-        "presence_pct": 100,
+        "nom": "Tester",
+        "prenom": "Budget",
+        "societe": "TestCorp",
         "bons_commande": [
             {
-                "chorus_id": "EJ-2026-000123",
-                "ibis_id": "CMD-2026-A01",
-                "jours_commandes": 120.0,
-                "tjm_ht": 450.0,
-                "date_debut": "2026-01-01"
-            },
-            {
-                "chorus_id": "EJ-2026-000124",
-                "ibis_id": "CMD-2026-A02",
-                "jours_commandes": 218.0,
-                "tjm_ht": 460.0,
-                "date_debut": "2026-07-01"
-            }
-        ]
-    },
-    {
-        "id": 5,
-        "type": "prestataire",
-        "nom": "Petit",
-        "prenom": "Thomas",
-        "societe": "Atos",
-        "presence_pct": 80,
-        "bons_commande": [
-            {
-                "chorus_id": "EJ-2026-888777",
-                "ibis_id": "CMD-2026-B01",
-                "jours_commandes": 218.0,
-                "tjm_ht": 520.0,
-                "date_debut": "2026-01-01"
-            }
-        ]
-    },
-    {
-        "id": 6,
-        "type": "interne",
-        "nom": "Lapin",
-        "prenom": "Jeannot"
-    },
-    {
-        "id": 7,
-        "type": "prestataire",
-        "nom": "Doe",
-        "prenom": "John",
-        "societe": "Sopra Steria",
-        "presence_pct": 100,
-        "bons_commande": [
-            {
-                "chorus_id": "EJ-2026-555001",
-                "ibis_id": "CMD-2026-C01",
-                "jours_commandes": 50.0,
-                "tjm_ht": 600.0,
-                "date_debut": "2026-01-01"
-            },
-            {
-                "chorus_id": "EJ-2026-555002",
-                "ibis_id": "CMD-2026-C02",
-                "jours_commandes": 100.0,
-                "tjm_ht": 600.0,
-                "date_debut": "2026-03-15"
-            },
-            {
-                "chorus_id": "EJ-2026-555003",
-                "ibis_id": "CMD-2026-C03",
-                "jours_commandes": 200.0,
-                "tjm_ht": 620.0,
-                "date_debut": "2026-09-01"
+                "chorus_id": "BC-BUDGET-1",
+                "ibis_id": "IB-1",
+                "jours_commandes": 10,
+                "tjm_ht": 100,
+                "uos": [
+                    {
+                        "code": "TEST_UO",
+                        "quantite": 10
+                    }
+                ],
+                "paiements": [
+                    {
+                        "type": "uo",
+                        "date_demande": "2024-05-20",
+                        "service_fait_id": "SF-UPDATED",
+                        "uos": [
+                            {
+                                "code": "TEST_UO",
+                                "quantite": 4.0
+                            }
+                        ]
+                    },
+                    {
+                        "type": "percentage",
+                        "date_demande": "2026-02-10",
+                        "service_fait_id": "",
+                        "percentage": 10.0
+                    }
+                ]
             }
         ]
     }
