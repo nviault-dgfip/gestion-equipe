@@ -8,8 +8,12 @@
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="/"><i class="fas fa-tasks"></i> Gestion Équipe Projet</a>
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">🏠 Accueil</a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/equipe">⚙️ Équipe</a>
+                <a class="nav-link" href="/budget">📊 Budget</a>
+            </div>
         </div>
     </nav>
     <div class="container">
@@ -22,12 +26,6 @@
             {% endfor %}
           {% endif %}
         {% endwith %}
-
-        <div class="d-flex justify-content-end mb-4">
-            <a href="/equipe" class="btn btn-primary shadow-sm">
-                <i class="fas fa-users-cog me-2"></i> Gérer l'équipe
-            </a>
-        </div>
 
         <div class="row justify-content-center">
             <div class="col-md-8">

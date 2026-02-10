@@ -409,6 +409,207 @@ def equipe_delete(id):
     flash("Supprimé.", "warning")
     return redirect(url_for('equipe_index'))
 
+# --- BUDGET ---
+
+@app.route('/budget')
+def budget_index():
+    team = load_team()
+    marche = load_marche()
+    tva_rate = marche.get('annexe_financiere', {}).get('tva_taux_percent', 20)
+
+    # Construction du catalogue UO pour accès rapide aux prix
+    uo_catalog = {}
+    for cat in marche.get('annexe_financiere', {}).get('lots_expertises', []):
+        for item in cat.get('items', []):
+            uo_catalog[item['code_uo']] = item['prix_unitaire_ht_eur']
+
+    budget_data = []
+    global_summary = {
+        "total_ht": 0,
+        "total_ttc": 0,
+        "paid_ht": 0,
+        "paid_ttc": 0,
+        "remaining_ht": 0,
+        "remaining_ttc": 0
+    }
+
+    for p in team:
+        if p.get('type') != 'prestataire': continue
+
+        for idx, bc in enumerate(p.get('bons_commande', [])):
+            # 1. Montant Total du BC
+            bc_total_ht = 0
+            ordered_uos = bc.get('uos', [])
+            for uo in ordered_uos:
+                price = uo_catalog.get(uo['code'], 0)
+                bc_total_ht += price * uo['quantite']
+
+            bc_total_ttc = bc_total_ht * (1 + tva_rate / 100)
+
+            # 2. Montants Déjà Payés
+            bc_paid_ht = 0
+            paid_uos_totals = {} # Tracking par code UO
+
+            payments = bc.get('paiements', [])
+            for pay in payments:
+                if pay['type'] == 'uo':
+                    for uo_p in pay.get('uos', []):
+                        price = uo_catalog.get(uo_p['code'], 0)
+                        bc_paid_ht += price * uo_p['quantite']
+                        paid_uos_totals[uo_p['code']] = paid_uos_totals.get(uo_p['code'], 0) + uo_p['quantite']
+                elif pay['type'] == 'percentage':
+                    bc_paid_ht += (pay['percentage'] / 100.0) * bc_total_ht
+
+            bc_paid_ttc = bc_paid_ht * (1 + tva_rate / 100)
+
+            # 3. Restants
+            bc_rem_ht = max(0, bc_total_ht - bc_paid_ht)
+            bc_rem_ttc = max(0, bc_total_ttc - bc_paid_ttc)
+
+            # Résumé UOs pour affichage (Commandé vs Payé)
+            uo_status = []
+            for uo in ordered_uos:
+                uo_status.append({
+                    "code": uo['code'],
+                    "ordered": uo['quantite'],
+                    "paid": paid_uos_totals.get(uo['code'], 0),
+                    "remaining": max(0, uo['quantite'] - paid_uos_totals.get(uo['code'], 0))
+                })
+
+            bc_data = {
+                "member_id": p['id'],
+                "member_name": f"{p['prenom']} {p['nom']}",
+                "bc_index": idx,
+                "chorus_id": bc.get('chorus_id', '-'),
+                "ibis_id": bc.get('ibis_id', '-'),
+                "total_ht": bc_total_ht,
+                "total_ttc": bc_total_ttc,
+                "paid_ht": bc_paid_ht,
+                "paid_ttc": bc_paid_ttc,
+                "remaining_ht": bc_rem_ht,
+                "remaining_ttc": bc_rem_ttc,
+                "uo_status": uo_status,
+                "payments": payments
+            }
+            budget_data.append(bc_data)
+
+            # Global
+            global_summary["total_ht"] += bc_total_ht
+            global_summary["total_ttc"] += bc_total_ttc
+            global_summary["paid_ht"] += bc_paid_ht
+            global_summary["paid_ttc"] += bc_paid_ttc
+            global_summary["remaining_ht"] += bc_rem_ht
+            global_summary["remaining_ttc"] += bc_rem_ttc
+
+    return render_template('budget.html', budget=budget_data, summary=global_summary, marche=marche, today=date.today().strftime("%Y-%m-%d"))
+
+@app.route('/budget/payer', methods=['POST'])
+def budget_payer():
+    team = load_team()
+    marche = load_marche()
+
+    member_id = int(request.form.get('member_id'))
+    bc_index = int(request.form.get('bc_index'))
+    pay_type = request.form.get('pay_type') # 'uo' or 'percentage'
+    date_demande = request.form.get('date_demande')
+    sf_id = request.form.get('service_fait_id', '')
+
+    # Catalogue UO pour validation
+    uo_catalog = {}
+    for cat in marche.get('annexe_financiere', {}).get('lots_expertises', []):
+        for item in cat.get('items', []):
+            uo_catalog[item['code_uo']] = item['prix_unitaire_ht_eur']
+
+    member = next((m for m in team if m['id'] == member_id), None)
+    if not member or 'bons_commande' not in member or bc_index >= len(member['bons_commande']):
+        flash("BC Introuvable.", "danger")
+        return redirect(url_for('budget_index'))
+
+    bc = member['bons_commande'][bc_index]
+    if 'paiements' not in bc: bc['paiements'] = []
+
+    if pay_type == 'uo':
+        codes = request.form.getlist('pay_uo_code[]')
+        qtys = request.form.getlist('pay_uo_qty[]')
+        pay_uos = []
+
+        # Validation des quantités
+        paid_totals = {}
+        for p in bc['paiements']:
+            if p['type'] == 'uo':
+                for up in p.get('uos', []):
+                    paid_totals[up['code']] = paid_totals.get(up['code'], 0) + up['quantite']
+
+        for i in range(len(codes)):
+            if codes[i] and qtys[i]:
+                code = codes[i]
+                qty = float(qtys[i])
+                ordered = next((u['quantite'] for u in bc['uos'] if u['code'] == code), 0)
+                already_paid = paid_totals.get(code, 0)
+
+                if already_paid + qty > ordered:
+                    flash(f"Erreur: Quantité payée ({already_paid + qty}) supérieure à commandée ({ordered}) pour {code}.", "danger")
+                    return redirect(url_for('budget_index'))
+
+                pay_uos.append({"code": code, "quantite": qty})
+
+        if not pay_uos:
+            flash("Aucune UO sélectionnée.", "warning")
+            return redirect(url_for('budget_index'))
+
+        bc['paiements'].append({
+            "type": "uo",
+            "date_demande": date_demande,
+            "service_fait_id": sf_id,
+            "uos": pay_uos
+        })
+
+    elif pay_type == 'percentage':
+        try:
+            pct = float(request.form.get('percentage'))
+        except:
+            flash("Pourcentage invalide.", "danger")
+            return redirect(url_for('budget_index'))
+
+        # Validation (Somme des % < 100% ? Optionnel mais prudent)
+        total_pct = sum(p['percentage'] for p in bc['paiements'] if p['type'] == 'percentage')
+        if total_pct + pct > 100.1: # 100.1 pour tolérance flottante
+            flash(f"Erreur: Le total payé dépasse 100% ({total_pct + pct}%).", "danger")
+            return redirect(url_for('budget_index'))
+
+        bc['paiements'].append({
+            "type": "percentage",
+            "date_demande": date_demande,
+            "service_fait_id": sf_id,
+            "percentage": pct
+        })
+
+    save_team_json(team)
+    flash("Paiement enregistré.", "success")
+    return redirect(url_for('budget_index'))
+
+@app.route('/budget/update_sf', methods=['POST'])
+def budget_update_sf():
+    team = load_team()
+    member_id = int(request.form.get('member_id'))
+    bc_index = int(request.form.get('bc_index'))
+    pay_index = int(request.form.get('pay_index'))
+    sf_id = request.form.get('service_fait_id')
+
+    member = next((m for m in team if m['id'] == member_id), None)
+    if member and bc_index < len(member['bons_commande']):
+        bc = member['bons_commande'][bc_index]
+        if 'paiements' in bc and pay_index < len(bc['paiements']):
+            bc['paiements'][pay_index]['service_fait_id'] = sf_id
+            save_team_json(team)
+            flash("Identifiant Service Fait mis à jour.", "success")
+        else:
+            flash("Paiement introuvable.", "danger")
+    else:
+        flash("BC introuvable.", "danger")
+
+    return redirect(url_for('budget_index'))
+
 if __name__ == '__main__':
     # Sécurité : Pas de debug mode en production par défaut
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
