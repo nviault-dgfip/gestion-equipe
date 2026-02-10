@@ -64,6 +64,7 @@
                                                     <span class="badge border text-dark fw-normal">{{ uo.quantite }} {{ uo.code }}</span>
                                                 {% endfor %}
                                             {% endif %}
+                                            <br><small class="text-muted">Début: {{ bc.date_debut }} ({{ bc.moment_debut or 'Matin' }})</small>
                                         </div>
                                     </div>
                                 {% else %} - {% endif %}
@@ -172,6 +173,7 @@
             let val_jours = data ? (data.jours_commandes || 0) : 0;
             let val_tjm = data ? (data.tjm_ht || 0) : 0;
             let val_debut = data ? data.date_debut : '';
+            let val_moment = data ? (data.moment_debut || 'Matin') : 'Matin';
             let uos = data ? (data.uos || []) : [];
 
             if (!data && container.children.length > 0) {
@@ -192,11 +194,11 @@
                 </div>
                 <div class="card-body p-2">
                     <div class="row g-2 mb-2">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="small fw-bold">N° CHORUS</label>
                             <input type="text" class="form-control form-control-sm" name="bc_chorus[]" value="${val_chorus}" placeholder="EJ-...">
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="small fw-bold">N° IBIS</label>
                             <input type="text" class="form-control form-control-sm" name="bc_ibis[]" value="${val_ibis}" placeholder="IB-...">
                         </div>
@@ -204,9 +206,16 @@
                             <label class="small fw-bold">Jours</label>
                             <input type="number" step="0.5" class="form-control form-control-sm field-jours" name="bc_jours[]" value="${val_jours}" oninput="recalcBC(this)">
                         </div>
-                        <div class="col-md-4">
+                        <div class="col-md-3">
                             <label class="small fw-bold">Date Début</label>
                             <input type="date" class="form-control form-control-sm field-debut" name="bc_debut[]" value="${val_debut}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small fw-bold">Moment</label>
+                            <select class="form-select form-select-sm" name="bc_moment[]">
+                                <option value="Matin" ${val_moment === 'Matin' ? 'selected' : ''}>Matin</option>
+                                <option value="Après-midi" ${val_moment === 'Après-midi' ? 'selected' : ''}>Après-midi</option>
+                            </select>
                         </div>
                     </div>
 
