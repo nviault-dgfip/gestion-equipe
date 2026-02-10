@@ -1,14 +1,21 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for, flash
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session
+from flask_wtf.csrf import CSRFProtect
 import pandas as pd
 import json
 import os
 import numpy as np
+import uuid
 from datetime import datetime, timedelta, date
 from io import BytesIO
+from functools import lru_cache
 import jours_feries_france
 
 app = Flask(__name__)
-app.secret_key = 'secret_key_chorus_ibis_gestion'
+# Sécurité : Clé secrète via variable d'environnement
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_chorus_ibis_gestion_change_me')
+# Sécurité : Limite de taille de fichier (10 Mo)
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+csrf = CSRFProtect(app)
 
 # --- CONFIGURATION ---
 JSON_FILE = "equipe.json"
@@ -35,13 +42,18 @@ def save_team_json(data):
     with open(JSON_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
+@lru_cache(maxsize=32)
+def get_holidays(year):
+    """Cache les jours fériés par année pour améliorer les performances."""
+    return jours_feries_france.JoursFeries.for_year(year).values()
+
 def is_holiday_or_weekend(target_date):
     """
     Vérifie si une date donnée est un week-end ou un jour férié en France.
     """
     if target_date.weekday() >= 5: return True
-    res = jours_feries_france.JoursFeries.for_year(target_date.year)
-    if target_date in res.values(): return True
+    holidays = get_holidays(target_date.year)
+    if target_date in holidays: return True
     return False
 
 def calculate_end_date(start_date_str, days_to_consume, presence_pct):
@@ -71,22 +83,44 @@ def calculate_end_date(start_date_str, days_to_consume, presence_pct):
            
     return current_date.strftime("%d/%m/%Y")
 
-def process_excel(filepath):
+def process_excel(filepath, limit_date=None):
     """
     Analyse le fichier Excel de planning pour calculer la consommation par membre.
     Le fichier doit contenir des colonnes correspondant aux noms des membres.
     Une cellule contenant 'X' (minuscule ou majuscule) compte pour 0.5 jour (une demi-journée).
+    Si limit_date est fournie, on ignore les présences après cette date.
     """
     try:
         xls = pd.read_excel(filepath, sheet_name=None, engine='openpyxl')
         consumption = {}
         ignored = ["Paramètres_Equipe", "Parametres", "Config"]
+
+        if limit_date:
+            limit_dt = pd.to_datetime(limit_date).date()
+        else:
+            limit_dt = None
+
         for sheet, df in xls.items():
             if any(x in sheet for x in ignored): continue
             df.columns = df.columns.astype(str).str.strip()
             if "Date" not in df.columns: continue
+
+            # Correction : gestion si la première date est manquante
+            if df['Date'].isnull().all(): continue
+            if pd.isna(df['Date'].iloc[0]):
+                # On cherche la première date valide pour remplir le début si besoin
+                first_valid_idx = df['Date'].first_valid_index()
+                if first_valid_idx is not None:
+                    df.loc[0:first_valid_idx, 'Date'] = df['Date'].loc[first_valid_idx]
+
             df['Date'] = df['Date'].ffill()
-            cols = [c for c in df.columns if c not in ["Date", "Période"] and "Unnamed" not in c]
+
+            # Filtrage par date si demandé
+            if limit_dt:
+                df['Date_dt'] = pd.to_datetime(df['Date']).dt.date
+                df = df[df['Date_dt'] <= limit_dt]
+
+            cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt"] and "Unnamed" not in c]
             for member in cols:
                 if member not in consumption: consumption[member] = 0.0
                 sub = df[member].dropna().astype(str).str.upper().str.strip()
@@ -97,25 +131,32 @@ def process_excel(filepath):
         print(f"Erreur process: {e}")
         return {}
 
-def generate_report_dataframe(conso_map, team):
+def generate_report_dataframe(conso_map, team, analysis_date=None):
     """
     Génère un DataFrame Pandas contenant le rapport de suivi des prestataires.
     Associe les données de consommation issues de l'Excel aux informations des BC
     définies dans l'équipe.
+    analysis_date: Date de référence pour le calcul de la fin estimée.
     """
     report_data = []
     prestataires = [p for p in team if p.get('type') == 'prestataire']
+    ref_date = analysis_date if analysis_date else date.today().strftime("%Y-%m-%d")
    
     for p in prestataires:
         # Nom complet (Format "NOM Prénom")
         nom_complet_display = f"{p['nom'].upper()} {p['prenom']}"
         societe = p.get('societe', '-')
        
-        # Consommation Totale
+        # Consommation Totale - Matching amélioré pour éviter les ambiguïtés
         total_consumed = 0
-        search_key = f"{p['prenom']} {p['nom']}".lower()
+        name_parts = [p['nom'].lower(), p['prenom'].lower()]
+
         for excel_name, val in conso_map.items():
-            if excel_name.lower() in search_key or p['nom'].lower() in excel_name.lower():
+            en_lower = excel_name.lower()
+            # Matching exact (dans les deux sens) ou présence des deux parties du nom
+            if en_lower == f"{p['prenom']} {p['nom']}".lower() or \
+               en_lower == f"{p['nom']} {p['prenom']}".lower() or \
+               (name_parts[0] in en_lower and name_parts[1] in en_lower):
                 total_consumed = val
                 break
        
@@ -145,11 +186,18 @@ def generate_report_dataframe(conso_map, team):
                 conso_bc = consumed_buffer
                 etat = "En cours"
                 consumed_buffer = 0
-                fin_estimee = calculate_end_date(start_date, days_ordered, pct_presence)
+                # Correction : Calcul de la fin estimée à partir de la date de référence
+                remaining_days = days_ordered - conso_bc
+                # On commence le calcul au lendemain de la date d'analyse
+                start_calc = (datetime.strptime(ref_date, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+                fin_estimee = calculate_end_date(start_calc, remaining_days, pct_presence)
             else:
                 conso_bc = 0
                 etat = "Futur"
-                fin_estimee = calculate_end_date(start_date, days_ordered, pct_presence)
+                # Pour un BC futur, on commence soit à la date de début du BC,
+                # soit après la date de référence si le BC a théoriquement déjà commencé
+                start_calc = max(start_date, ref_date)
+                fin_estimee = calculate_end_date(start_calc, days_ordered, pct_presence)
            
             # Construction de la ligne selon vos propriétés demandées
             report_data.append({
@@ -176,13 +224,21 @@ def generate_report_dataframe(conso_map, team):
 def index():
     if request.method == 'POST':
         file = request.files.get('file')
+        analysis_date = request.form.get('analysis_date')
+        if not analysis_date:
+            analysis_date = date.today().strftime("%Y-%m-%d")
+
         if file:
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'planning_temp.xlsx')
+            # Sécurité : Nom de fichier unique pour éviter les collisions
+            filename = f"planning_{uuid.uuid4().hex}.xlsx"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
+            session['last_filepath'] = filepath
+            session['analysis_date'] = analysis_date
            
-            conso_map = process_excel(filepath)
+            conso_map = process_excel(filepath, limit_date=analysis_date)
             team = load_team()
-            df = generate_report_dataframe(conso_map, team)
+            df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
            
             df_web = df.copy()
             if not df_web.empty:
@@ -199,16 +255,18 @@ def index():
             table_html = df_web.to_html(classes="table table-striped table-bordered align-middle table-hover", index=False)
             return render_template('dashboard.html', table=table_html)
 
-    return render_template('index.html')
+    return render_template('index.html', today=date.today().strftime("%Y-%m-%d"))
 
 @app.route('/export_excel')
 def export_excel():
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], 'planning_temp.xlsx')
-    if not os.path.exists(filepath): return "Aucun fichier. Importez d'abord.", 400
+    filepath = session.get('last_filepath')
+    analysis_date = session.get('analysis_date')
+    if not filepath or not os.path.exists(filepath):
+        return "Aucun fichier. Importez d'abord.", 400
    
-    conso_map = process_excel(filepath)
+    conso_map = process_excel(filepath, limit_date=analysis_date)
     team = load_team()
-    df = generate_report_dataframe(conso_map, team)
+    df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
    
     # Nettoyage de la colonne 'État' pour l'export Excel (optionnel)
     if 'État' in df.columns:
@@ -240,12 +298,19 @@ def equipe_save():
     data = request.form
     member_id = data.get('id')
    
+    # Validation des entrées numériques
+    try:
+        presence_pct = int(data.get('presence_pct') or 100)
+    except ValueError:
+        flash("Erreur : Le pourcentage de présence doit être un nombre entier.", "danger")
+        return redirect(url_for('equipe_index'))
+
     new_member = {
         "type": data.get('type'),
         "nom": data.get('nom'),
         "prenom": data.get('prenom'),
-        "societe": data.get('societe'), # Nouveau champ
-        "presence_pct": int(data.get('presence_pct') or 100)
+        "societe": data.get('societe'),
+        "presence_pct": presence_pct
     }
    
     if data.get('type') == 'prestataire':
@@ -258,14 +323,20 @@ def equipe_save():
        
         bcs = []
         for i in range(len(chorus)):
-            # On enregistre la ligne si au moins un ID est rempli
             if chorus[i] or ibis[i]:
+                try:
+                    jours_val = float(jours[i] or 0)
+                    tjm_val = float(tjms[i] or 0)
+                except ValueError:
+                    flash(f"Erreur : Valeurs numériques invalides pour le BC {chorus[i] or ibis[i]}.", "danger")
+                    return redirect(url_for('equipe_index'))
+
                 bcs.append({
                     "chorus_id": chorus[i],
                     "ibis_id": ibis[i],
-                    "jours_commandes": float(jours[i] or 0),
+                    "jours_commandes": jours_val,
                     "date_debut": debuts[i],
-                    "tjm_ht": float(tjms[i] or 0)
+                    "tjm_ht": tjm_val
                 })
         new_member['bons_commande'] = bcs
 
@@ -294,4 +365,6 @@ def equipe_delete(id):
     return redirect(url_for('equipe_index'))
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+    # Sécurité : Pas de debug mode en production par défaut
+    debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=8080, debug=debug_mode)

@@ -11,7 +11,9 @@ Cette application Flask permet de gérer une équipe (internes et prestataires) 
     - TJM (Tarif Journalier Moyen)
     - Date de début
 - **Analyse du planning** : Import d'un fichier Excel de planning pour calculer automatiquement les jours consommés.
-- **Tableau de bord** : Visualisation de l'état de consommation, du montant consommé/restant et estimation de la date de fin des BC.
+- **Tableau de bord interactif** : Visualisation de l'état de consommation, du montant consommé/restant et estimation de la date de fin des BC. Possibilité de choisir les colonnes à afficher.
+- **Analyse Rétrospective** : Choix de la date d'analyse pour générer des rapports à n'importe quel point dans le temps.
+- **Sécurité & Robustesse** : Protection CSRF, gestion sécurisée des fichiers (UUID), validation des entrées et mise en cache des calculs de jours fériés.
 - **Export Excel** : Génération d'un rapport de suivi au format Excel.
 
 ## Installation
@@ -48,7 +50,7 @@ Si vous n'avez pas encore de planning, vous pouvez utiliser le script `gen.py` p
 ```bash
 python gen.py
 ```
-Le fichier `planning_equipe_format_NN_2026.xlsx` sera généré.
+Le fichier `planning_equipe_2026.xlsx` sera généré.
 
 ### 4. Saisie du planning
 
