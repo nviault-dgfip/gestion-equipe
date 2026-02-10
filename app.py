@@ -19,6 +19,7 @@ csrf = CSRFProtect(app)
 
 # --- CONFIGURATION ---
 JSON_FILE = "equipe.json"
+MARCHE_FILE = "marche.json"
 UPLOAD_FOLDER = '/tmp'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -36,6 +37,15 @@ def load_team():
         except:
             return []
     return data
+
+def load_marche():
+    """Charge le catalogue des UOs depuis marche.json."""
+    if not os.path.exists(MARCHE_FILE): return {}
+    with open(MARCHE_FILE, 'r') as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
 
 def save_team_json(data):
     """Sauvegarde la liste des membres de l'équipe dans le fichier JSON."""
@@ -199,10 +209,15 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
                 start_calc = max(start_date, ref_date)
                 fin_estimee = calculate_end_date(start_calc, days_ordered, pct_presence)
            
+            # Détail des UOs pour affichage
+            uos = bc.get('uos', [])
+            uo_summary = " + ".join([f"{uo['quantite']} {uo['code']}" for uo in uos]) if uos else "-"
+
             # Construction de la ligne selon vos propriétés demandées
             report_data.append({
                 "État": etat, # Pour le filtre
                 "n°Bon de Commande CHORUS": bc.get('chorus_id', '-'),
+                "Composition UO": uo_summary,
                 "Prestataire": societe,
                 "Montant BC (K€ HT)": f"{montant_k:.2f}", # Format K€
                 "N° commande IBIS": bc.get('ibis_id', '-'),
@@ -244,7 +259,7 @@ def index():
             if not df_web.empty:
                 # Ordre des colonnes pour l'affichage Web
                 cols = [
-                    "n°Bon de Commande CHORUS", "Prestataire", "Montant BC (K€ HT)",
+                    "n°Bon de Commande CHORUS", "Prestataire", "Composition UO", "Montant BC (K€ HT)",
                     "N° commande IBIS", "Jours Commandés", "NOM Prénom",
                     "TJM (HT) €", "Date début", "Jours Consommés",
                     "Jours Restants", "Fin Estimée", "État"
@@ -290,7 +305,8 @@ def export_excel():
 @app.route('/equipe')
 def equipe_index():
     team = load_team()
-    return render_template('team.html', team=team)
+    marche = load_marche()
+    return render_template('team.html', team=team, marche=marche)
 
 @app.route('/equipe/save', methods=['POST'])
 def equipe_save():
@@ -320,6 +336,7 @@ def equipe_save():
         jours = data.getlist('bc_jours[]')
         debuts = data.getlist('bc_debut[]')
         tjms = data.getlist('bc_tjm[]')
+        uos_json = data.getlist('bc_uos_json[]')
        
         bcs = []
         for i in range(len(chorus)):
