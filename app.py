@@ -344,13 +344,6 @@ def equipe_save():
                 try:
                     jours_val = float(jours[i] or 0)
                     tjm_val = float(tjms[i] or 0)
-                    # Parsing du JSON des UOs
-                    bc_uos = []
-                    if i < len(uos_json) and uos_json[i]:
-                        try:
-                            bc_uos = json.loads(uos_json[i])
-                        except:
-                            bc_uos = []
                 except ValueError:
                     flash(f"Erreur : Valeurs numériques invalides pour le BC {chorus[i] or ibis[i]}.", "danger")
                     return redirect(url_for('equipe_index'))
@@ -360,8 +353,7 @@ def equipe_save():
                     "ibis_id": ibis[i],
                     "jours_commandes": jours_val,
                     "date_debut": debuts[i],
-                    "tjm_ht": tjm_val,
-                    "uos": bc_uos
+                    "tjm_ht": tjm_val
                 })
         new_member['bons_commande'] = bcs
 
