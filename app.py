@@ -184,6 +184,14 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
             if en_lower == f"{p_prenom} {p_nom}" or \
                en_lower == f"{p_nom} {p_prenom}" or \
                (p_nom in en_lower and p_prenom in en_lower):
+        name_parts = [p['nom'].lower(), p['prenom'].lower()]
+
+        for excel_name, val in conso_map.items():
+            en_lower = excel_name.lower()
+            # Matching exact (dans les deux sens) ou présence des deux parties du nom
+            if en_lower == f"{p['prenom']} {p['nom']}".lower() or \
+               en_lower == f"{p['nom']} {p['prenom']}".lower() or \
+               (name_parts[0] in en_lower and name_parts[1] in en_lower):
                 total_consumed = val
                 break
        
