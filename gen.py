@@ -119,13 +119,12 @@ with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
             cell.fill = header_fill
             cell.font = text_white_bold
        
-        # Formules pour les noms (C, D, E...)
+        # Noms en dur (C, D, E...) pour compatibilité pandas sans Excel
         for i in range(nb_members):
             col_idx = 3 + i
             col_letter = get_column_letter(col_idx)
-            row_source = i + 2
            
-            ws.cell(row=1, column=col_idx).value = f"='{sheet_equipe_name}'!A{row_source}"
+            ws.cell(row=1, column=col_idx).value = team_members[i]
            
             cell = ws.cell(row=1, column=col_idx)
             cell.fill = header_fill

@@ -1,1 +1,144 @@
-{"annexe_financiere": {"tva_taux_percent": 20, "lots_expertises": [{"items": [{"code_uo": "TEST_UO", "prix_unitaire_ht_eur": 100}]}]}}
+{
+  "annexe_financiere": {
+    "reference": "EXEMPLE",
+    "lots_expertises": [
+      {
+        "categorie": "ETUDE D’IMPLANTATION",
+        "items": [
+          {
+            "code_uo": "IMPLS",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "IMPLM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "IMPLF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "ASSISTANCE A LA MISE EN ŒUVRE",
+        "items": [
+          {
+            "code_uo": "AMOES",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "AMOEM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "AMOEF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "ASSISTANCE A L’EXPLOITATION",
+        "items": [
+          {
+            "code_uo": "AEXPLOIT1",
+            "complexite": null,
+            "prix_unitaire_ht_eur": 1000.60
+          },
+          {
+            "code_uo": "AEXPLOIT2",
+            "complexite": null,
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "AUDITS",
+        "items": [
+          {
+            "code_uo": "AUDITS",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "AUDITM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "AUDITF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "EOPS",
+        "items": [
+          {
+            "code_uo": "EOPS",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "EOPM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "EOPF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "DÉVELOPPEMENTS",
+        "items": [
+          {
+            "code_uo": "DEVS",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "DEVM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "DEVF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      },
+      {
+        "categorie": "MONITORAT",
+        "items": [
+          {
+            "code_uo": "MONITS",
+            "complexite": "Simple",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "MONITM",
+            "complexite": "Moyenne",
+            "prix_unitaire_ht_eur": 1000.00
+          },
+          {
+            "code_uo": "MONITF",
+            "complexite": "Forte",
+            "prix_unitaire_ht_eur": 1000.00
+          }
+        ]
+      }
+    ],
+    "total_ttc_ht_eur": null,
+    "tva_taux_percent": 20
+  }
+}
