@@ -50,6 +50,10 @@ def load_marche():
 def save_team_json(data):
     """Sauvegarde la liste des membres de l'équipe dans le fichier JSON."""
     with open(JSON_FILE, 'w') as f:
+        json.dump(data, f, json_encode_hook=None, indent=4) # Fixed potential issue with json.dump arguments if any, usually just (data, f, indent=4) is fine.
+
+def save_team_json(data):
+    with open(JSON_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 @lru_cache(maxsize=32)
