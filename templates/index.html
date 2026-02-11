@@ -8,8 +8,12 @@
 </head>
 <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container">
-            <a class="navbar-brand" href="/"><i class="fas fa-tasks"></i> Gestion Équipe Projet</a>
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">🏠 Accueil</a>
+            <div class="navbar-nav">
+                <a class="nav-link" href="/equipe">⚙️ Équipe</a>
+                <a class="nav-link" href="/budget">📊 Budget</a>
+            </div>
         </div>
     </nav>
     <div class="container">
@@ -23,12 +27,6 @@
           {% endif %}
         {% endwith %}
 
-        <div class="d-flex justify-content-end mb-4">
-            <a href="/equipe" class="btn btn-primary shadow-sm">
-                <i class="fas fa-users-cog me-2"></i> Gérer l'équipe
-            </a>
-        </div>
-
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card shadow border-0">
@@ -38,7 +36,19 @@
                     </div>
                     <div class="card-body p-4">
                         <form method="post" enctype="multipart/form-data">
-                            <input class="form-control form-control-lg mb-4" type="file" name="file" accept=".xlsx" required>
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">1. Choisir le fichier de planning (.xlsx)</label>
+                                <input class="form-control" type="file" name="file" accept=".xlsx" required>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">2. Date d'analyse (Optionnel)</label>
+                                <input class="form-control" type="date" name="analysis_date" id="analysis_date">
+                                <div class="form-text">Par défaut : aujourd'hui. Les présences après cette date seront ignorées dans le calcul de consommation.</div>
+                            </div>
+
                             <div class="d-grid">
                                 <button type="submit" class="btn btn-success btn-lg">Analyser et Voir le Rapport</button>
                             </div>
@@ -49,5 +59,12 @@
         </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Fixer la date par défaut à aujourd'hui
+        document.addEventListener('DOMContentLoaded', function() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('analysis_date').value = today;
+        });
+    </script>
 </body>
 </html>

@@ -11,7 +11,10 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="/">🏠 Accueil</a>
-            <span class="navbar-text text-white">⚙️ Base Collaborateurs</span>
+            <div class="navbar-nav">
+                <a class="nav-link active" href="/equipe">⚙️ Équipe</a>
+                <a class="nav-link" href="/budget">📊 Budget</a>
+            </div>
         </div>
     </nav>
 
@@ -54,15 +57,29 @@
                             </td>
                             <td>
                                 {% if m.type == 'prestataire' and m.bons_commande %}
-                                    <small class="text-muted">
-                                        {{ m.bons_commande|length }} BC(s).
-                                        En cours : Chorus {{ m.bons_commande[0].chorus_id }} / IBIS {{ m.bons_commande[0].ibis_id }}
-                                    </small>
+                                    <div class="small">
+                                        <span class="text-muted">{{ m.bons_commande|length }} BC(s).</span>
+                                        {% set bc = m.bons_commande[0] %}
+                                        <div class="mt-1">
+<<<<<<< Updated upstream
+                                            <strong>{{ bc.chorus_id }}</strong>:
+=======
+                                            <strong>{{ bc.chorus_id }}</strong>:
+>>>>>>> Stashed changes
+                                            {% if bc.uos %}
+                                                {% for uo in bc.uos %}
+                                                    <span class="badge border text-dark fw-normal">{{ uo.quantite }} {{ uo.code }}</span>
+                                                {% endfor %}
+                                            {% endif %}
+                                            <br><small class="text-muted">Début: {{ bc.date_debut }} ({{ bc.moment_debut or 'Matin' }})</small>
+                                        </div>
+                                    </div>
                                 {% else %} - {% endif %}
                             </td>
                             <td class="text-end">
                                 <button class="btn btn-sm btn-outline-primary" onclick='editMember({{ m | tojson }})'><i class="fas fa-edit"></i></button>
                                 <form action="/equipe/delete/{{ m.id }}" method="POST" class="d-inline" onsubmit="return confirm('Supprimer ?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
                                 </form>
                             </td>
@@ -77,6 +94,7 @@
     <div class="modal fade" id="memberModal" tabindex="-1">
         <div class="modal-dialog modal-xl"> <div class="modal-content">
                 <form action="/equipe/save" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <div class="modal-header">
                         <h5 class="modal-title" id="modalTitle">Fiche Membre</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -118,21 +136,8 @@
                                 </button>
                             </div>
                            
-                            <table class="table table-sm table-bordered bg-white">
-                                <thead>
-                                    <tr class="table-light small text-center">
-                                        <th>N° CHORUS</th>
-                                        <th>N° IBIS</th>
-                                        <th style="width: 80px;">Jours</th>
-                                        <th style="width: 80px;">TJM €</th>
-                                        <th>Début Commande</th>
-                                        <th>Total K€ (Auto)</th>
-                                        <th style="width: 40px;"></th>
-                                    </tr>
-                                </thead>
-                                <tbody id="bcContainer"></tbody>
-                            </table>
-                            <small class="text-muted">Le montant total en K€ est calculé automatiquement (Jours x TJM).</small>
+                            <div id="bcContainer"></div>
+                            <small class="text-muted">Le TJM est calculé automatiquement à partir des Unités d'Oeuvre (UO) et du nombre de jours.</small>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -147,6 +152,17 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const myModal = new bootstrap.Modal(document.getElementById('memberModal'));
+        const catalogUO = {{ marche.annexe_financiere.lots_expertises | tojson if marche else '[]' }};
+        const uoList = [];
+        catalogUO.forEach(cat => {
+            cat.items.forEach(item => {
+                uoList.push({
+                    code: item.code_uo,
+                    prix: item.prix_unitaire_ht_eur,
+                    label: `${item.code_uo} (${item.complexite || 'Standard'}) - ${item.prix_unitaire_ht_eur}€`
+                });
+            });
+        });
 
         function togglePrestaFields() {
             const isPresta = document.getElementById('field_type').value === 'prestataire';
@@ -155,49 +171,169 @@
 
         function addBCRow(data = null) {
             const container = document.getElementById('bcContainer');
-            const row = document.createElement('tr');
+            const bcIndex = container.children.length;
+            const bcDiv = document.createElement('div');
+            bcDiv.className = "card mb-3 border-secondary bc-item";
            
             let val_chorus = data ? data.chorus_id : '';
             let val_ibis = data ? data.ibis_id : '';
-            let val_jours = data ? data.jours_commandes : '';
-            let val_tjm = data ? data.tjm_ht : '';
+            let val_jours = data ? (data.jours_commandes || 0) : 0;
+            let val_tjm = data ? (data.tjm_ht || 0) : 0;
             let val_debut = data ? data.date_debut : '';
-           
-            // Estimation Début
-            if (!data && container.rows.length > 0) {
-                const lastRow = container.rows[container.rows.length - 1];
-                const lastStart = lastRow.querySelector('input[name="bc_debut[]"]').value;
-                const lastDays = parseFloat(lastRow.querySelector('input[name="bc_jours[]"]').value) || 0;
+            let val_moment = data ? (data.moment_debut || 'Matin') : 'Matin';
+            let uos = data ? (data.uos || []) : [];
+
+            if (!data && container.children.length > 0) {
+                const lastBC = container.lastElementChild;
+                const lastStart = lastBC.querySelector('.field-debut').value;
+                const lastDays = parseFloat(lastBC.querySelector('.field-jours').value) || 0;
                 if (lastStart && lastDays > 0) {
                     const d = new Date(lastStart);
-                    d.setDate(d.getDate() + Math.ceil(lastDays * 1.45)); // Approx ouvrés
+                    d.setDate(d.getDate() + Math.ceil(lastDays * 1.45));
                     val_debut = d.toISOString().split('T')[0];
                 }
             }
-           
-            // Calcul Montant KE affiché (visuel seulement)
-            let montantK = (val_jours && val_tjm) ? ((val_jours * val_tjm)/1000).toFixed(2) : '-';
 
-            row.innerHTML = `
-                <td><input type="text" class="form-control form-control-sm" name="bc_chorus[]" value="${val_chorus}" placeholder="EJ-..."></td>
-                <td><input type="text" class="form-control form-control-sm" name="bc_ibis[]" value="${val_ibis}" placeholder="IB-..."></td>
-                <td><input type="number" step="0.5" class="form-control form-control-sm" name="bc_jours[]" value="${val_jours}" onchange="calcK(this)"></td>
-                <td><input type="number" step="0.1" class="form-control form-control-sm" name="bc_tjm[]" value="${val_tjm}" onchange="calcK(this)"></td>
-                <td><input type="date" class="form-control form-control-sm" name="bc_debut[]" value="${val_debut}"></td>
-                <td class="text-center align-middle bg-light"><span class="k-amount fw-bold text-secondary">${montantK}</span></td>
-                <td class="text-center">
-                    <button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button>
-                </td>
+            bcDiv.innerHTML = `
+                <div class="card-header bg-secondary text-white d-flex justify-content-between align-items-center py-1">
+                    <span class="small fw-bold">Bon de Commande</span>
+                    <button type="button" class="btn btn-sm btn-danger py-0" style="font-size: 0.7rem;" onclick="this.closest('.bc-item').remove()"><i class="fas fa-trash"></i></button>
+                </div>
+                <div class="card-body p-2">
+                    <div class="row g-2 mb-2">
+                        <div class="col-md-2">
+                            <label class="small fw-bold">N° CHORUS</label>
+                            <input type="text" class="form-control form-control-sm" name="bc_chorus[]" value="${val_chorus}" placeholder="EJ-...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="small fw-bold">N° IBIS</label>
+                            <input type="text" class="form-control form-control-sm" name="bc_ibis[]" value="${val_ibis}" placeholder="IB-...">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="small fw-bold">Jours</label>
+                            <input type="number" step="0.5" class="form-control form-control-sm field-jours" name="bc_jours[]" value="${val_jours}" oninput="recalcBC(this)">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small fw-bold">Date Début</label>
+                            <input type="date" class="form-control form-control-sm field-debut" name="bc_debut[]" value="${val_debut}">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="small fw-bold">Moment</label>
+                            <select class="form-select form-select-sm" name="bc_moment[]">
+                                <option value="Matin" ${val_moment === 'Matin' ? 'selected' : ''}>Matin</option>
+                                <option value="Après-midi" ${val_moment === 'Après-midi' ? 'selected' : ''}>Après-midi</option>
+                            </select>
+                        </div>
+                    </div>
+<<<<<<< Updated upstream
+
+=======
+
+>>>>>>> Stashed changes
+                    <div class="border rounded p-2 bg-light">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="small fw-bold text-dark"><i class="fas fa-list"></i> Composition UO</span>
+                            <button type="button" class="btn btn-xxs btn-outline-primary py-0 px-1" style="font-size: 0.65rem;" onclick="addUORow(this)">
+                                <i class="fas fa-plus"></i> Ajouter UO
+                            </button>
+                        </div>
+                        <table class="table table-sm table-borderless mb-0">
+                            <tbody class="uo-tbody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="mt-2 d-flex justify-content-between align-items-center px-1">
+                        <div class="small text-muted" style="font-size: 0.75rem;">
+<<<<<<< Updated upstream
+                            Total HT: <span class="fw-bold text-dark bc-total-ht">0.00</span> € |
+=======
+                            Total HT: <span class="fw-bold text-dark bc-total-ht">0.00</span> € |
+>>>>>>> Stashed changes
+                            TJM: <span class="fw-bold text-primary bc-calc-tjm">0.00</span> €
+                        </div>
+                        <input type="hidden" name="bc_tjm[]" class="field-tjm" value="${val_tjm}">
+                    </div>
+                    <input type="hidden" name="bc_uos_json[]" class="field-uos-json">
+                </div>
             `;
-            container.appendChild(row);
+            container.appendChild(bcDiv);
+<<<<<<< Updated upstream
+
+=======
+
+>>>>>>> Stashed changes
+            const uoTbody = bcDiv.querySelector('.uo-tbody');
+            if (uos.length > 0) {
+                uos.forEach(uo => addUORow(uoTbody, uo));
+            } else {
+                addUORow(uoTbody);
+            }
+            recalcBC(bcDiv);
         }
 
-        function calcK(input) {
-            const row = input.closest('tr');
-            const jours = parseFloat(row.querySelector('input[name="bc_jours[]"]').value) || 0;
-            const tjm = parseFloat(row.querySelector('input[name="bc_tjm[]"]').value) || 0;
-            const total = (jours * tjm) / 1000;
-            row.querySelector('.k-amount').innerText = total > 0 ? total.toFixed(2) : '-';
+        function addUORow(btnOrTbody, data = null) {
+            const tbody = btnOrTbody.tagName === 'TBODY' ? btnOrTbody : btnOrTbody.closest('.card-body').querySelector('.uo-tbody');
+            const row = document.createElement('tr');
+            row.className = "uo-row";
+<<<<<<< Updated upstream
+
+=======
+
+>>>>>>> Stashed changes
+            let selectedCode = data ? data.code : '';
+            let quantity = data ? data.quantite : 1;
+
+            let options = uoList.map(uo => `<option value="${uo.code}" ${uo.code === selectedCode ? 'selected' : ''}>${uo.label}</option>`).join('');
+
+            row.innerHTML = `
+                <td style="width: 75%;">
+                    <select class="form-select form-select-sm uo-select" style="font-size: 0.7rem;" oninput="recalcBC(this)">
+                        <option value="">-- Choisir UO --</option>
+                        ${options}
+                    </select>
+                </td>
+                <td style="width: 20%;">
+                    <input type="number" step="1" class="form-control form-control-sm uo-qty" style="font-size: 0.7rem;" value="${quantity}" oninput="recalcBC(this)">
+                </td>
+                <td style="width: 5%; text-align: right;">
+                    <button type="button" class="btn btn-sm text-danger p-0" onclick="const tb=this.closest('tbody'); this.closest('tr').remove(); recalcBC(tb);"><i class="fas fa-times"></i></button>
+                </td>
+            `;
+            tbody.appendChild(row);
+            recalcBC(tbody);
+        }
+
+        function recalcBC(element) {
+            const bcItem = element.closest('.bc-item');
+            if (!bcItem) return;
+
+            const jours = parseFloat(bcItem.querySelector('.field-jours').value) || 0;
+            const uoRows = bcItem.querySelectorAll('.uo-row');
+            let totalHT = 0;
+            let uoData = [];
+
+            uoRows.forEach(row => {
+                const code = row.querySelector('.uo-select').value;
+                const qty = parseFloat(row.querySelector('.uo-qty').value) || 0;
+                if (code) {
+                    const uo = uoList.find(u => u.code === code);
+                    if (uo) {
+                        totalHT += uo.prix * qty;
+                        uoData.push({code: code, quantite: qty});
+                    }
+                }
+            });
+
+            const tjm = jours > 0 ? totalHT / jours : 0;
+<<<<<<< Updated upstream
+
+=======
+
+>>>>>>> Stashed changes
+            bcItem.querySelector('.bc-total-ht').innerText = totalHT.toLocaleString('fr-FR', {minimumFractionDigits: 2});
+            bcItem.querySelector('.bc-calc-tjm').innerText = tjm.toLocaleString('fr-FR', {minimumFractionDigits: 2});
+            bcItem.querySelector('.field-tjm').value = tjm.toFixed(2);
+            bcItem.querySelector('.field-uos-json').value = JSON.stringify(uoData);
         }
 
         function openModal() {
