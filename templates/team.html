@@ -59,6 +59,10 @@
                                 {% if m.type == 'prestataire' and m.bons_commande %}
                                     <div class="small">
                                         <span class="text-muted">{{ m.bons_commande|length }} BC(s).</span>
+                                        {% set member_key = m.prenom ~ ' ' ~ m.nom %}
+                                        {% if initial_conso and member_key in initial_conso and initial_conso[member_key] > 0 %}
+                                            <span class="badge bg-warning text-dark">Initial: {{ initial_conso[member_key] }}j</span>
+                                        {% endif %}
                                         {% set bc = m.bons_commande[0] %}
                                         <div class="mt-1">
                                             <strong>{{ bc.chorus_id }}</strong>:
@@ -121,6 +125,10 @@
                             <div class="col-md-1 presta-only" style="display:none;">
                                 <label class="form-label">% Prés.</label>
                                 <input type="number" class="form-control" name="presence_pct" id="field_pct" value="100">
+                            </div>
+                            <div class="col-md-3 presta-only" style="display:none;">
+                                <label class="form-label" title="Jours consommés avant l'utilisation de cet outil">Consommé hors planning</label>
+                                <input type="number" step="0.5" class="form-control" name="jours_consommes_hors_planning" id="field_hors_planning" value="0">
                             </div>
                         </div>
 
@@ -318,6 +326,7 @@
             document.getElementById('field_nom').value = "";
             document.getElementById('field_prenom').value = "";
             document.getElementById('field_societe').value = "";
+            document.getElementById('field_hors_planning').value = "0";
             document.getElementById('bcContainer').innerHTML = "";
             document.getElementById('field_type').value = "interne";
             togglePrestaFields();
@@ -334,6 +343,12 @@
             if (member.type === 'prestataire') {
                 document.getElementById('field_societe').value = member.societe || "";
                 document.getElementById('field_pct').value = member.presence_pct || 100;
+
+                // Récupération de la conso initiale depuis le mapping passé au template
+                const initialMap = {{ initial_conso | tojson if initial_conso else '{}' }};
+                const memberKey = member.prenom + ' ' + member.nom;
+                document.getElementById('field_hors_planning').value = initialMap[memberKey] || 0;
+
                 document.getElementById('bcContainer').innerHTML = "";
                
                 if (member.bons_commande) {

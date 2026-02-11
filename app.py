@@ -20,6 +20,7 @@ csrf = CSRFProtect(app)
 # --- CONFIGURATION ---
 JSON_FILE = "equipe.json"
 MARCHE_FILE = "marche.json"
+CONSO_FILE = "consommation.json"
 UPLOAD_FOLDER = '/tmp'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -50,6 +51,20 @@ def load_marche():
 def save_team_json(data):
     """Sauvegarde la liste des membres de l'équipe dans le fichier JSON."""
     with open(JSON_FILE, 'w') as f:
+        json.dump(data, f, indent=4)
+
+def load_consumption():
+    """Charge l'historique de consommation depuis le fichier JSON."""
+    if not os.path.exists(CONSO_FILE): return {}
+    with open(CONSO_FILE, 'r') as f:
+        try:
+            return json.load(f)
+        except:
+            return {}
+
+def save_consumption(data):
+    """Sauvegarde l'historique de consommation dans le fichier JSON."""
+    with open(CONSO_FILE, 'w') as f:
         json.dump(data, f, indent=4)
 
 @lru_cache(maxsize=32)
@@ -142,15 +157,22 @@ def process_excel(filepath, limit_date=None):
             df['Month'] = df['Date_dt'].apply(lambda x: x.strftime('%Y-%m'))
 
             cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt", "Month"] and "Unnamed" not in c]
+            months_in_sheet = df['Month'].unique()
+
             for member in cols:
                 if member not in consumption: consumption[member] = {}
+
+                # Initialisation des mois présents dans cette feuille à 0 si pas déjà vus
+                for m_key in months_in_sheet:
+                    if m_key not in consumption[member]:
+                        consumption[member][m_key] = 0.0
 
                 # Groupement par mois pour ce membre sur cet onglet
                 sub_df = df[df[member].astype(str).str.upper().str.strip() == 'X']
                 monthly_counts = sub_df.groupby('Month').size() * 0.5
 
                 for m_key, val in monthly_counts.items():
-                    consumption[member][m_key] = consumption[member].get(m_key, 0.0) + val
+                    consumption[member][m_key] += val
 
         return consumption
     except Exception as e:
@@ -187,8 +209,10 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
             if en_lower == f"{p_prenom} {p_nom}" or \
                en_lower == f"{p_nom} {p_prenom}" or \
                (p_nom in en_lower and p_prenom in en_lower):
-                total_consumed = sum(val_monthly.values())
-                break
+                # On cumule les mois ET la valeur initiale
+                total_consumed += sum(v for k, v in val_monthly.items() if k != "__initial__")
+                total_consumed += val_monthly.get("__initial__", 0)
+                # On n'arrête pas la boucle pour pouvoir cumuler si le nom apparaît sous plusieurs formes
        
         pct_presence = float(p.get('presence_pct', 100))
        
@@ -275,7 +299,19 @@ def index():
             session['last_filepath'] = filepath
             session['analysis_date'] = analysis_date
            
-            conso_map = process_excel(filepath, limit_date=analysis_date)
+            # Nouveau traitement : fusion avec l'historique
+            new_conso = process_excel(filepath, limit_date=analysis_date)
+            history = load_consumption()
+
+            for member, monthly_data in new_conso.items():
+                if member not in history:
+                    history[member] = {}
+                for m_key, val in monthly_data.items():
+                    history[member][m_key] = val # Écrase le mois avec les nouvelles données
+
+            save_consumption(history)
+
+            conso_map = history
             team = load_team()
 
             prestataires = [p for p in team if p.get('type') == 'prestataire']
@@ -304,16 +340,61 @@ def index():
             table_html = df_web.to_html(classes="table table-striped table-bordered align-middle table-hover", index=False)
             return render_template('dashboard.html', table=table_html)
 
-    return render_template('index.html', today=date.today().strftime("%Y-%m-%d"))
+    history = load_consumption()
+    history_summary = []
+    for member, months in history.items():
+        if months:
+            sorted_months = sorted([m for m in months.keys() if m != "__initial__"])
+            history_summary.append({
+                "name": member,
+                "range": f"{sorted_months[0]} à {sorted_months[-1]}" if sorted_months else "Initial uniquement",
+                "count": len([m for m in months.keys() if m != "__initial__"])
+            })
+
+    return render_template('index.html', today=date.today().strftime("%Y-%m-%d"), history_summary=history_summary)
+
+@app.route('/dashboard')
+def dashboard_view():
+    analysis_date = session.get('analysis_date')
+    if not analysis_date:
+        analysis_date = date.today().strftime("%Y-%m-%d")
+
+    conso_map = load_consumption()
+    team = load_team()
+
+    df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
+
+    if df.empty:
+        flash("Aucune donnée de consommation enregistrée. Veuillez importer un planning.", "info")
+        return redirect(url_for('index'))
+
+    df_web = df.copy()
+    cols = [
+        "n°Bon de Commande CHORUS", "Prestataire", "Composition UO", "Montant BC (K€ HT)",
+        "N° commande IBIS", "Jours Commandés", "NOM Prénom",
+        "TJM (HT) €", "Date début", "Jours Consommés",
+        "Jours Restants", "Fin Estimée", "État"
+    ]
+    existing_cols = [c for c in cols if c in df_web.columns]
+    df_web = df_web[existing_cols]
+
+    table_html = df_web.to_html(classes="table table-striped table-bordered align-middle table-hover", index=False)
+    return render_template('dashboard.html', table=table_html)
+
+@app.route('/history/clear', methods=['POST'])
+def clear_history():
+    if os.path.exists(CONSO_FILE):
+        os.remove(CONSO_FILE)
+    flash("Historique de consommation effacé.", "warning")
+    return redirect(url_for('index'))
 
 @app.route('/export_excel')
 def export_excel():
-    filepath = session.get('last_filepath')
     analysis_date = session.get('analysis_date')
-    if not filepath or not os.path.exists(filepath):
-        return "Aucun fichier. Importez d'abord.", 400
+    if not analysis_date:
+        analysis_date = date.today().strftime("%Y-%m-%d")
    
-    conso_map = process_excel(filepath, limit_date=analysis_date)
+    conso_map = load_consumption()
     team = load_team()
     df = generate_report_dataframe(conso_map, team, analysis_date=analysis_date)
    
@@ -340,7 +421,15 @@ def export_excel():
 def equipe_index():
     team = load_team()
     marche = load_marche()
-    return render_template('team.html', team=team, marche=marche)
+    history = load_consumption()
+
+    # Préparer un mapping pour l'affichage de la conso initiale
+    initial_conso_map = {}
+    for member_name, months in history.items():
+        if "__initial__" in months:
+            initial_conso_map[member_name] = months["__initial__"]
+
+    return render_template('team.html', team=team, marche=marche, initial_conso=initial_conso_map)
 
 @app.route('/equipe/save', methods=['POST'])
 def equipe_save():
@@ -415,6 +504,17 @@ def equipe_save():
         team.append(new_member)
 
     save_team_json(team)
+
+    # Sauvegarde de la consommation initiale dans consommation.json
+    hors_planning = float(data.get('jours_consommes_hors_planning') or 0)
+    if hors_planning >= 0:
+        history = load_consumption()
+        member_name_key = f"{new_member['prenom']} {new_member['nom']}"
+        if member_name_key not in history:
+            history[member_name_key] = {}
+        history[member_name_key]["__initial__"] = hors_planning
+        save_consumption(history)
+
     flash("Données mises à jour.", "success")
     return redirect(url_for('equipe_index'))
 
@@ -434,13 +534,17 @@ def match_member_conso(member, conso_map):
     p_prenom = member.get('prenom', '').lower().strip()
     if not p_nom and not p_prenom: return {}
 
+    total_conso_monthly = {}
     for excel_name, val_monthly in conso_map.items():
         en_lower = str(excel_name).lower().strip()
         if en_lower == f"{p_prenom} {p_nom}" or \
            en_lower == f"{p_nom} {p_prenom}" or \
            (p_nom in en_lower and p_prenom in en_lower):
-            return val_monthly
-    return {}
+            for m_key, val in val_monthly.items():
+                if m_key != "__initial__":
+                    total_conso_monthly[m_key] = total_conso_monthly.get(m_key, 0) + val
+
+    return total_conso_monthly
 
 @app.route('/budget')
 def budget_index():
@@ -448,10 +552,8 @@ def budget_index():
     marche = load_marche()
     tva_rate = marche.get('annexe_financiere', {}).get('tva_taux_percent', 20)
 
-    # --- 1. CALCULS MENSUELS BASÉS SUR L'EXCEL ---
-    last_filepath = session.get('last_filepath')
-    analysis_date = session.get('analysis_date')
-    conso_map = process_excel(last_filepath, limit_date=analysis_date) if last_filepath else {}
+    # --- 1. CALCULS MENSUELS BASÉS SUR L'HISTORIQUE ---
+    conso_map = load_consumption()
 
     monthly_costs_per_member = {}
     global_monthly_costs = {}
