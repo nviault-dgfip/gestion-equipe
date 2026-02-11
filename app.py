@@ -109,9 +109,7 @@ def calculate_end_date(start_date_str, start_moment, days_to_consume, presence_p
 def process_excel(filepath, limit_date=None):
     """
     Analyse le fichier Excel de planning pour calculer la consommation par membre.
-    Le fichier doit contenir des colonnes correspondant aux noms des membres.
-    Une cellule contenant 'X' (minuscule ou majuscule) compte pour 0.5 jour (une demi-journée).
-    Si limit_date est fournie, on ignore les présences après cette date.
+    Retourne un dictionnaire : { nom_membre: { 'YYYY-MM': nb_jours } }
     """
     try:
         xls = pd.read_excel(filepath, sheet_name=None, engine='openpyxl')
@@ -128,27 +126,32 @@ def process_excel(filepath, limit_date=None):
             df.columns = df.columns.astype(str).str.strip()
             if "Date" not in df.columns: continue
 
-            # Correction : gestion si la première date est manquante
             if df['Date'].isnull().all(): continue
             if pd.isna(df['Date'].iloc[0]):
-                # On cherche la première date valide pour remplir le début si besoin
                 first_valid_idx = df['Date'].first_valid_index()
                 if first_valid_idx is not None:
                     df.loc[0:first_valid_idx, 'Date'] = df['Date'].loc[first_valid_idx]
 
             df['Date'] = df['Date'].ffill()
+            df['Date_dt'] = pd.to_datetime(df['Date']).dt.date
 
             # Filtrage par date si demandé
             if limit_dt:
-                df['Date_dt'] = pd.to_datetime(df['Date']).dt.date
                 df = df[df['Date_dt'] <= limit_dt]
 
-            cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt"] and "Unnamed" not in c]
+            df['Month'] = df['Date_dt'].apply(lambda x: x.strftime('%Y-%m'))
+
+            cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt", "Month"] and "Unnamed" not in c]
             for member in cols:
-                if member not in consumption: consumption[member] = 0.0
-                sub = df[member].dropna().astype(str).str.upper().str.strip()
-                count_x = (sub == 'X').sum()
-                consumption[member] += (count_x * 0.5)
+                if member not in consumption: consumption[member] = {}
+
+                # Groupement par mois pour ce membre sur cet onglet
+                sub_df = df[df[member].astype(str).str.upper().str.strip() == 'X']
+                monthly_counts = sub_df.groupby('Month').size() * 0.5
+
+                for m_key, val in monthly_counts.items():
+                    consumption[member][m_key] = consumption[member].get(m_key, 0.0) + val
+
         return consumption
     except Exception as e:
         print(f"Erreur process: {e}")
@@ -178,13 +181,13 @@ def generate_report_dataframe(conso_map, team, analysis_date=None):
         if not p_nom and not p_prenom:
             continue
 
-        for excel_name, val in conso_map.items():
+        for excel_name, val_monthly in conso_map.items():
             en_lower = str(excel_name).lower().strip()
             # Matching exact (dans les deux sens) ou présence des deux parties du nom
             if en_lower == f"{p_prenom} {p_nom}" or \
                en_lower == f"{p_nom} {p_prenom}" or \
                (p_nom in en_lower and p_prenom in en_lower):
-                total_consumed = val
+                total_consumed = sum(val_monthly.values())
                 break
        
         pct_presence = float(p.get('presence_pct', 100))
@@ -425,12 +428,85 @@ def equipe_delete(id):
 
 # --- BUDGET ---
 
+def match_member_conso(member, conso_map):
+    """Retrouve la consommation mensuelle d'un membre dans la map issue de l'Excel."""
+    p_nom = member.get('nom', '').lower().strip()
+    p_prenom = member.get('prenom', '').lower().strip()
+    if not p_nom and not p_prenom: return {}
+
+    for excel_name, val_monthly in conso_map.items():
+        en_lower = str(excel_name).lower().strip()
+        if en_lower == f"{p_prenom} {p_nom}" or \
+           en_lower == f"{p_nom} {p_prenom}" or \
+           (p_nom in en_lower and p_prenom in en_lower):
+            return val_monthly
+    return {}
+
 @app.route('/budget')
 def budget_index():
     team = load_team()
     marche = load_marche()
     tva_rate = marche.get('annexe_financiere', {}).get('tva_taux_percent', 20)
 
+    # --- 1. CALCULS MENSUELS BASÉS SUR L'EXCEL ---
+    last_filepath = session.get('last_filepath')
+    analysis_date = session.get('analysis_date')
+    conso_map = process_excel(last_filepath, limit_date=analysis_date) if last_filepath else {}
+
+    monthly_costs_per_member = {}
+    global_monthly_costs = {}
+    all_months = set()
+
+    for p in team:
+        if p.get('type') != 'prestataire': continue
+        member_name = f"{p['prenom']} {p['nom']}"
+        member_conso_monthly = match_member_conso(p, conso_map)
+
+        if not member_conso_monthly: continue
+
+        sorted_months = sorted(member_conso_monthly.keys())
+        all_months.update(sorted_months)
+
+        p_bcs = p.get('bons_commande', [])
+        # On trie les BCs par date de début pour la répartition
+        sorted_p_bcs = sorted(p_bcs, key=lambda x: x.get('date_debut') or '9999-99-99')
+
+        cumulative_days_distributed = 0
+        monthly_costs_per_member[member_name] = {}
+
+        for m_key in sorted_months:
+            days_to_distribute = member_conso_monthly[m_key]
+            cost_this_month = 0
+
+            while days_to_distribute > 0.0001:
+                current_bc = None
+                bc_start_cumul = 0
+                for bc in sorted_p_bcs:
+                    bc_limit = bc_start_cumul + bc.get('jours_commandes', 0)
+                    if cumulative_days_distributed < bc_limit - 0.0001:
+                        current_bc = bc
+                        available_in_bc = bc_limit - cumulative_days_distributed
+                        portion = min(days_to_distribute, available_in_bc)
+
+                        cost_this_month += portion * bc.get('tjm_ht', 0)
+                        cumulative_days_distributed += portion
+                        days_to_distribute -= portion
+                        break
+                    bc_start_cumul = bc_limit
+
+                if not current_bc:
+                    # Plus de BC disponible : on utilise le TJM du dernier BC par défaut
+                    fallback_tjm = sorted_p_bcs[-1].get('tjm_ht', 0) if sorted_p_bcs else 0
+                    cost_this_month += days_to_distribute * fallback_tjm
+                    cumulative_days_distributed += days_to_distribute
+                    days_to_distribute = 0
+
+            monthly_costs_per_member[member_name][m_key] = cost_this_month
+            global_monthly_costs[m_key] = global_monthly_costs.get(m_key, 0) + cost_this_month
+
+    sorted_all_months = sorted(list(all_months))
+
+    # --- 2. CALCULS DES TOTAUX PAR BC ---
     # Construction du catalogue UO pour accès rapide aux prix
     uo_catalog = {}
     for cat in marche.get('annexe_financiere', {}).get('lots_expertises', []):
@@ -515,7 +591,14 @@ def budget_index():
             global_summary["remaining_ht"] += bc_rem_ht
             global_summary["remaining_ttc"] += bc_rem_ttc
 
-    return render_template('budget.html', budget=budget_data, summary=global_summary, marche=marche, today=date.today().strftime("%Y-%m-%d"))
+    return render_template('budget.html',
+                           budget=budget_data,
+                           summary=global_summary,
+                           marche=marche,
+                           today=date.today().strftime("%Y-%m-%d"),
+                           monthly_costs=monthly_costs_per_member,
+                           global_monthly=global_monthly_costs,
+                           months=sorted_all_months)
 
 @app.route('/budget/payer', methods=['POST'])
 def budget_payer():

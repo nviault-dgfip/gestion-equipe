@@ -62,6 +62,70 @@
             </div>
         </div>
 
+        <!-- Monthly Costs Summary -->
+        {% if months %}
+        <div class="card shadow-sm mb-4 border-info">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="fas fa-calendar-alt"></i> Récapitulatif des Coûts Mensuels (Basé sur le planning)</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <h6>Cumul Mensuel Global</h6>
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Mois</th>
+                                    <th class="text-end">Coût HT</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for m in months %}
+                                <tr>
+                                    <td>{{ m }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(global_monthly[m]).replace(',', ' ') }} €</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="col-md-8">
+                        <h6>Détail par Prestataire</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm table-bordered small">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Prestataire</th>
+                                        {% for m in months %}
+                                        <th class="text-end">{{ m }}</th>
+                                        {% endfor %}
+                                        <th class="text-end fw-bold">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for name, costs in monthly_costs.items() %}
+                                    <tr>
+                                        <td>{{ name }}</td>
+                                        {% set row_total = 0 %}
+                                        {% for m in months %}
+                                            {% set c = costs.get(m, 0) %}
+                                            <td class="text-end">{{ "{:,.2f}".format(c).replace(',', ' ') }} €</td>
+                                        {% endfor %}
+                                        <td class="text-end fw-bold bg-light">
+                                            {% set total = costs.values() | sum %}
+                                            {{ "{:,.2f}".format(total).replace(',', ' ') }} €
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- BC List -->
         <div class="mb-4 d-flex justify-content-between align-items-center">
             <h2>Détail des Paiements par Bon de Commande</h2>
