@@ -1,0 +1,4 @@
+  File "/app/app.py", line 50
+    <<<<<<< HEAD
+    ^^
+SyntaxError: invalid syntax
