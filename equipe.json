@@ -5,8 +5,7 @@
         "nom": "Dupont",
         "prenom": "Martin",
         "societe": "",
-        "presence_pct": 100,
-        "jours_consommes_hors_planning": 0
+        "presence_pct": 100
     },
     {
         "id": 2,
@@ -30,8 +29,7 @@
                     }
                 ]
             }
-        ],
-        "jours_consommes_hors_planning": 0
+        ]
     },
     {
         "id": 3,
@@ -55,8 +53,7 @@
                     }
                 ]
             }
-        ],
-        "jours_consommes_hors_planning": 0
+        ]
     },
     {
         "id": 4,
@@ -64,8 +61,7 @@
         "nom": "Martin",
         "prenom": "Sophie",
         "societe": "",
-        "presence_pct": 100,
-        "jours_consommes_hors_planning": 0
+        "presence_pct": 100
     },
     {
         "id": 5,
@@ -89,7 +85,6 @@
                     }
                 ]
             }
-        ],
-        "jours_consommes_hors_planning": 0
+        ]
     }
 ]
