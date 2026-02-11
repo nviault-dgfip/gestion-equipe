@@ -5,7 +5,8 @@
         "nom": "Dupont",
         "prenom": "Martin",
         "societe": "",
-        "presence_pct": 100
+        "presence_pct": 100,
+        "jours_consommes_hors_planning": 0
     },
     {
         "id": 2,
@@ -29,7 +30,8 @@
                     }
                 ]
             }
-        ]
+        ],
+        "jours_consommes_hors_planning": 0
     },
     {
         "id": 3,
@@ -53,7 +55,8 @@
                     }
                 ]
             }
-        ]
+        ],
+        "jours_consommes_hors_planning": 0
     },
     {
         "id": 4,
@@ -61,7 +64,8 @@
         "nom": "Martin",
         "prenom": "Sophie",
         "societe": "",
-        "presence_pct": 100
+        "presence_pct": 100,
+        "jours_consommes_hors_planning": 0
     },
     {
         "id": 5,
@@ -76,7 +80,7 @@
                 "ibis_id": "IB-003",
                 "jours_commandes": 10.0,
                 "date_debut": "2026-01-10",
-                "moment_debut": "Après-midi",
+                "moment_debut": "Apr\u00e8s-midi",
                 "tjm_ht": 1000.0,
                 "uos": [
                     {
@@ -85,6 +89,7 @@
                     }
                 ]
             }
-        ]
+        ],
+        "jours_consommes_hors_planning": 0
     }
 ]
