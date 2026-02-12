@@ -1,7 +1,13 @@
 from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session
 from flask_wtf.csrf import CSRFProtect
 import pandas as pd
-from fpdf import FPDF, XPos, YPos
+try:
+    from fpdf import FPDF, XPos, YPos
+except (ImportError, AttributeError):
+    import sys
+    print("ERREUR : La bibliothèque 'fpdf2' est mal installée ou entre en conflit avec l'ancienne 'fpdf'.", file=sys.stderr)
+    print("Veuillez exécuter : pip uninstall -y fpdf fpdf2 && pip install fpdf2", file=sys.stderr)
+    raise
 import json
 import os
 import numpy as np
