@@ -1,7 +1,13 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session, make_response
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session
 from flask_wtf.csrf import CSRFProtect
 import pandas as pd
-from fpdf import FPDF, XPos, YPos
+try:
+    from fpdf import FPDF, XPos, YPos
+except (ImportError, AttributeError):
+    import sys
+    print("ERREUR : La bibliothèque 'fpdf2' est mal installée ou entre en conflit avec l'ancienne 'fpdf'.", file=sys.stderr)
+    print("Veuillez exécuter : pip uninstall -y fpdf fpdf2 && pip install fpdf2", file=sys.stderr)
+    raise
 import json
 import os
 import numpy as np
@@ -830,10 +836,7 @@ def budget_export_pdf():
             pdf.add_page()
 
     output = pdf.output()
-    response = make_response(output)
-    response.headers.set('Content-Disposition', 'attachment', filename=f"Budget_Export_{datetime.now().strftime('%Y-%m-%d')}.pdf")
-    response.headers.set('Content-Type', 'application/pdf')
-    return response
+    return send_file(BytesIO(output), download_name=f"Budget_Export_{datetime.now().strftime('%Y-%m-%d')}.pdf", as_attachment=True, mimetype='application/pdf')
 
 @app.route('/budget/export/excel')
 def budget_export_excel():
