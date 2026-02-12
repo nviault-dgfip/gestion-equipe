@@ -1,6 +1,7 @@
-from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session
+from flask import Flask, render_template, request, send_file, redirect, url_for, flash, session, make_response
 from flask_wtf.csrf import CSRFProtect
 import pandas as pd
+from fpdf import FPDF, XPos, YPos
 import json
 import os
 import numpy as np
@@ -546,8 +547,7 @@ def match_member_conso(member, conso_map):
 
     return total_conso_monthly
 
-@app.route('/budget')
-def budget_index():
+def get_budget_data_context():
     team = load_team()
     marche = load_marche()
     tva_rate = marche.get('annexe_financiere', {}).get('tva_taux_percent', 20)
@@ -693,14 +693,232 @@ def budget_index():
             global_summary["remaining_ht"] += bc_rem_ht
             global_summary["remaining_ttc"] += bc_rem_ttc
 
-    return render_template('budget.html',
-                           budget=budget_data,
-                           summary=global_summary,
-                           marche=marche,
-                           today=date.today().strftime("%Y-%m-%d"),
-                           monthly_costs=monthly_costs_per_member,
-                           global_monthly=global_monthly_costs,
-                           months=sorted_all_months)
+    return {
+        "budget": budget_data,
+        "summary": global_summary,
+        "marche": marche,
+        "today": date.today().strftime("%Y-%m-%d"),
+        "monthly_costs": monthly_costs_per_member,
+        "global_monthly": global_monthly_costs,
+        "months": sorted_all_months
+    }
+
+@app.route('/budget')
+def budget_index():
+    ctx = get_budget_data_context()
+    return render_template('budget.html', **ctx)
+
+class BudgetPDF(FPDF):
+    def header(self):
+        self.set_font('helvetica', 'B', 15)
+        self.cell(0, 10, 'Rapport de Budget et Paiements', align='C', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.set_font('helvetica', 'I', 10)
+        self.cell(0, 10, f'Généré le {datetime.now().strftime("%d/%m/%Y %H:%M")}', align='R', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.ln(5)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('helvetica', 'I', 8)
+        self.cell(0, 10, f'Page {self.page_no()}/{{nb}}', align='C')
+
+@app.route('/budget/export/pdf')
+def budget_export_pdf():
+    ctx = get_budget_data_context()
+    pdf = BudgetPDF(orientation='L', unit='mm', format='A4')
+    pdf.alias_nb_pages()
+    pdf.add_page()
+
+    # 1. Résumé Global
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 10, '1. Résumé Global', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font('helvetica', '', 10)
+
+    summary = ctx['summary']
+    pdf.cell(60, 8, "Indicateur", border=1)
+    pdf.cell(60, 8, "Montant HT", border=1)
+    pdf.cell(60, 8, "Montant TTC", border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    indicators = [
+        ["Total Commandé", summary['total_ht'], summary['total_ttc']],
+        ["Total Payé", summary['paid_ht'], summary['paid_ttc']],
+        ["Reste à Payer", summary['remaining_ht'], summary['remaining_ttc']]
+    ]
+
+    for row in indicators:
+        pdf.cell(60, 8, row[0], border=1)
+        pdf.cell(60, 8, f"{row[1]:,.2f} EUR".replace(',', ' '), border=1)
+        pdf.cell(60, 8, f"{row[2]:,.2f} EUR".replace(',', ' '), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.ln(10)
+
+    # 2. Coûts Mensuels
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 10, '2. Coûts Mensuels Global', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_font('helvetica', '', 10)
+
+    months = ctx['months']
+    global_monthly = ctx['global_monthly']
+
+    pdf.cell(40, 8, 'Mois', border=1)
+    pdf.cell(40, 8, 'Coût HT', border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    for m in months:
+        pdf.cell(40, 8, m, border=1)
+        pdf.cell(40, 8, f"{global_monthly[m]:,.2f} EUR".replace(',', ' '), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    if ctx['monthly_costs']:
+        pdf.add_page()
+        pdf.set_font('helvetica', 'B', 12)
+        pdf.cell(0, 10, '3. Détail par Prestataire', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font('helvetica', '', 8)
+
+        # Headers
+        pdf.cell(45, 8, 'Prestataire', border=1)
+        num_months = len(months)
+        # On calcule une largeur dynamique pour les mois
+        # Largeur disponible : 297 (A4 L) - 10*2 (margins) - 45 (name) - 25 (total) = 207
+        month_width = min(20, 207 / max(1, num_months))
+
+        for m in months:
+            pdf.cell(month_width, 8, m, border=1)
+        pdf.cell(25, 8, 'Total', border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        for name, costs in ctx['monthly_costs'].items():
+            pdf.cell(45, 8, name[:25], border=1)
+            row_total = 0
+            for m in months:
+                val = costs.get(m, 0)
+                pdf.cell(month_width, 8, f"{val:,.0f}".replace(',', ' '), border=1)
+                row_total += val
+            pdf.cell(25, 8, f"{row_total:,.2f}".replace(',', ' '), border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    pdf.add_page()
+    pdf.set_font('helvetica', 'B', 12)
+    pdf.cell(0, 10, '4. Détail des Bons de Commande et Historique', new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+    for bc in ctx['budget']:
+        pdf.set_font('helvetica', 'B', 10)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(0, 8, f"BC: {bc['chorus_id']} ({bc['ibis_id']}) - {bc['member_name']}", fill=True, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.set_font('helvetica', '', 9)
+        pdf.cell(60, 6, f"Initial HT: {bc['total_ht']:,.2f} EUR".replace(',', ' '))
+        pdf.cell(60, 6, f"Déjà Payé HT: {bc['paid_ht']:,.2f} EUR".replace(',', ' '))
+        pdf.cell(60, 6, f"Reste HT: {bc['remaining_ht']:,.2f} EUR".replace(',', ' '), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+
+        if bc['payments']:
+            pdf.set_font('helvetica', 'B', 8)
+            pdf.cell(30, 6, "Date", border=1)
+            pdf.cell(25, 6, "Type", border=1)
+            pdf.cell(40, 6, "SF ID", border=1)
+            pdf.cell(100, 6, "Détail", border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            pdf.set_font('helvetica', '', 8)
+            for pay in bc['payments']:
+                pdf.cell(30, 6, str(pay.get('date_demande', '')), border=1)
+                pdf.cell(25, 6, str(pay['type']), border=1)
+                pdf.cell(40, 6, str(pay.get('service_fait_id', '')), border=1)
+                detail = ""
+                if pay['type'] == 'percentage':
+                    detail = f"{pay['percentage']}%"
+                else:
+                    detail = ", ".join([f"{uo['quantite']}x{uo['code']}" for uo in pay.get('uos', [])])
+                pdf.cell(100, 6, detail[:70], border=1, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        else:
+            pdf.set_font('helvetica', 'I', 8)
+            pdf.cell(0, 6, "Aucun paiement enregistré.", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(5)
+
+        if pdf.get_y() > 170:
+            pdf.add_page()
+
+    output = pdf.output()
+    response = make_response(output)
+    response.headers.set('Content-Disposition', 'attachment', filename=f"Budget_Export_{datetime.now().strftime('%Y-%m-%d')}.pdf")
+    response.headers.set('Content-Type', 'application/pdf')
+    return response
+
+@app.route('/budget/export/excel')
+def budget_export_excel():
+    ctx = get_budget_data_context()
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Tab 1: Résumé Global
+        summary = ctx['summary']
+        df_summary = pd.DataFrame([
+            {"Indicateur": "Total Commandé HT", "Valeur (€)": summary['total_ht']},
+            {"Indicateur": "Total Commandé TTC", "Valeur (€)": summary['total_ttc']},
+            {"Indicateur": "Total Payé HT", "Valeur (€)": summary['paid_ht']},
+            {"Indicateur": "Total Payé TTC", "Valeur (€)": summary['paid_ttc']},
+            {"Indicateur": "Reste à Payer HT", "Valeur (€)": summary['remaining_ht']},
+            {"Indicateur": "Reste à Payer TTC", "Valeur (€)": summary['remaining_ttc']}
+        ])
+        df_summary.to_excel(writer, index=False, sheet_name='Résumé Global')
+
+        # Tab 2: Coûts Mensuels
+        months = ctx['months']
+        global_monthly = ctx['global_monthly']
+        df_global = pd.DataFrame([{"Mois": m, "Coût HT (€)": global_monthly[m]} for m in months])
+
+        detailed_data = []
+        for name, costs in ctx['monthly_costs'].items():
+            row = {"Prestataire": name}
+            row_total = 0
+            for m in months:
+                val = costs.get(m, 0)
+                row[m] = val
+                row_total += val
+            row["Total (€)"] = row_total
+            detailed_data.append(row)
+        df_detailed = pd.DataFrame(detailed_data)
+
+        df_global.to_excel(writer, index=False, sheet_name='Coûts Mensuels', startrow=0)
+        df_detailed.to_excel(writer, index=False, sheet_name='Coûts Mensuels', startrow=len(df_global) + 3)
+
+        # Tab 3: Détails des BC
+        bc_rows = []
+        for bc in ctx['budget']:
+            bc_rows.append({
+                "BC Chorus": bc['chorus_id'],
+                "BC Ibis": bc['ibis_id'],
+                "Prestataire": bc['member_name'],
+                "Montant Initial HT": bc['total_ht'],
+                "Montant Initial TTC": bc['total_ttc'],
+                "Déjà Payé HT": bc['paid_ht'],
+                "Reste à Payer HT": bc['remaining_ht'],
+                "Reste à Payer TTC": bc['remaining_ttc']
+            })
+        df_bc = pd.DataFrame(bc_rows)
+        df_bc.to_excel(writer, index=False, sheet_name='Détails BC')
+
+        # Tab 4: Historique des Paiements
+        pay_rows = []
+        for bc in ctx['budget']:
+            for pay in bc['payments']:
+                detail = ""
+                if pay['type'] == 'percentage':
+                    detail = f"{pay['percentage']}%"
+                else:
+                    detail = ", ".join([f"{uo['quantite']} x {uo['code']}" for uo in pay.get('uos', [])])
+
+                pay_rows.append({
+                    "BC Chorus": bc['chorus_id'],
+                    "Prestataire": bc['member_name'],
+                    "Date Demande": pay.get('date_demande', ''),
+                    "Type": pay['type'],
+                    "ID Service Fait": pay.get('service_fait_id', ''),
+                    "Détail": detail
+                })
+        df_pay = pd.DataFrame(pay_rows)
+        df_pay.to_excel(writer, index=False, sheet_name='Historique Paiements')
+
+        # Auto-ajustement des colonnes
+        for sheetname in writer.sheets:
+            worksheet = writer.sheets[sheetname]
+            for column_cells in worksheet.columns:
+                length = max(len(str(cell.value)) for cell in column_cells)
+                worksheet.column_dimensions[column_cells[0].column_letter].width = length + 2
+
+    output.seek(0)
+    return send_file(output, download_name=f"Budget_Export_{datetime.now().strftime('%Y-%m-%d')}.xlsx", as_attachment=True, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 @app.route('/budget/payer', methods=['POST'])
 def budget_payer():

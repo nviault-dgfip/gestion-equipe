@@ -4,3 +4,4 @@ pandas
 openpyxl
 numpy
 jours-feries-france
+fpdf2

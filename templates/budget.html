@@ -23,6 +23,18 @@
     </nav>
 
     <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2 class="mb-0">Budget & Paiements</h2>
+            <div>
+                <a href="/budget/export/excel" class="btn btn-outline-success">
+                    <i class="fas fa-file-excel"></i> Export Excel
+                </a>
+                <a href="/budget/export/pdf" class="btn btn-outline-danger">
+                    <i class="fas fa-file-pdf"></i> Export PDF
+                </a>
+            </div>
+        </div>
+
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
@@ -127,8 +139,8 @@
         {% endif %}
 
         <!-- BC List -->
-        <div class="mb-4 d-flex justify-content-between align-items-center">
-            <h2>Détail des Paiements par Bon de Commande</h2>
+        <div class="mb-4">
+            <h3>Détail des Paiements par Bon de Commande</h3>
         </div>
 
         {% for item in budget %}
