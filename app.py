@@ -136,7 +136,7 @@ def process_excel(filepath, limit_date=None):
     try:
         xls = pd.read_excel(filepath, sheet_name=None, engine='openpyxl')
         consumption = {}
-        ignored = ["Paramètres_Equipe", "Parametres", "Config"]
+        ignored = ["Paramètres_Equipe", "Parametres", "Config", "Bilan année"]
 
         if limit_date:
             limit_dt = pd.to_datetime(limit_date).date()
@@ -148,38 +148,73 @@ def process_excel(filepath, limit_date=None):
             df.columns = df.columns.astype(str).str.strip()
             if "Date" not in df.columns: continue
 
-            if df['Date'].isnull().all(): continue
-            if pd.isna(df['Date'].iloc[0]):
-                first_valid_idx = df['Date'].first_valid_index()
-                if first_valid_idx is not None:
-                    df.loc[0:first_valid_idx, 'Date'] = df['Date'].loc[first_valid_idx]
+            # Recherche de la ligne de total
+            # On cherche dans la première colonne (généralement "Date")
+            total_presence_mask = df.iloc[:, 0].astype(str).str.contains("Total Présences", case=False, na=False)
 
-            df['Date'] = df['Date'].ffill()
-            df['Date_dt'] = pd.to_datetime(df['Date']).dt.date
+            if total_presence_mask.any():
+                # On récupère l'index de la ligne de total
+                total_idx = df[total_presence_mask].index[0]
 
-            # Filtrage par date si demandé
-            if limit_dt:
-                df = df[df['Date_dt'] <= limit_dt]
+                # On détermine le mois pour cet onglet à partir des premières dates valides
+                temp_dates = pd.to_datetime(df['Date'], errors='coerce')
+                first_date_idx = temp_dates.first_valid_index()
+                if first_date_idx is not None:
+                    sheet_month = temp_dates.loc[first_date_idx].strftime('%Y-%m')
+                else:
+                    # Fallback sur le nom de l'onglet si possible ou on ignore
+                    continue
 
-            df['Month'] = df['Date_dt'].apply(lambda x: x.strftime('%Y-%m'))
+                # Si on a une date limite, on doit quand même vérifier si le mois est concerné
+                if limit_dt and sheet_month > limit_dt.strftime('%Y-%m'):
+                    continue
 
-            cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt", "Month"] and "Unnamed" not in c]
-            months_in_sheet = df['Month'].unique()
+                cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt", "Month"] and "Unnamed" not in c]
+                for member in cols:
+                    if member not in consumption: consumption[member] = {}
+                    val = df.at[total_idx, member]
 
-            for member in cols:
-                if member not in consumption: consumption[member] = {}
+                    # Gestion du format numérique (virgule française)
+                    if isinstance(val, str):
+                        val = val.replace(',', '.')
+                    try:
+                        conso_val = float(val)
+                    except:
+                        conso_val = 0.0
 
-                # Initialisation des mois présents dans cette feuille à 0 si pas déjà vus
-                for m_key in months_in_sheet:
-                    if m_key not in consumption[member]:
-                        consumption[member][m_key] = 0.0
+                    consumption[member][sheet_month] = consumption[member].get(sheet_month, 0.0) + conso_val
+            else:
+                # Ancienne logique si pas de ligne de total (Rétro-compatibilité)
+                if df['Date'].isnull().all(): continue
+                if pd.isna(df['Date'].iloc[0]):
+                    first_valid_idx = df['Date'].first_valid_index()
+                    if first_valid_idx is not None:
+                        df.loc[0:first_valid_idx, 'Date'] = df['Date'].loc[first_valid_idx]
 
-                # Groupement par mois pour ce membre sur cet onglet
-                sub_df = df[df[member].astype(str).str.upper().str.strip() == 'X']
-                monthly_counts = sub_df.groupby('Month').size() * 0.5
+                df['Date'] = df['Date'].ffill()
+                df['Date_dt'] = pd.to_datetime(df['Date'], errors='coerce').dt.date
 
-                for m_key, val in monthly_counts.items():
-                    consumption[member][m_key] += val
+                # Filtrage par date si demandé
+                if limit_dt:
+                    df = df[df['Date_dt'] <= limit_dt]
+
+                df['Month'] = df['Date_dt'].apply(lambda x: x.strftime('%Y-%m') if pd.notnull(x) else None)
+                df = df.dropna(subset=['Month'])
+
+                cols = [c for c in df.columns if c not in ["Date", "Période", "Date_dt", "Month"] and "Unnamed" not in c]
+                months_in_sheet = df['Month'].unique()
+
+                for member in cols:
+                    if member not in consumption: consumption[member] = {}
+                    for m_key in months_in_sheet:
+                        if m_key not in consumption[member]:
+                            consumption[member][m_key] = 0.0
+
+                    sub_df = df[df[member].astype(str).str.upper().str.strip() == 'X']
+                    monthly_counts = sub_df.groupby('Month').size() * 0.5
+
+                    for m_key, val in monthly_counts.items():
+                        consumption[member][m_key] += val
 
         return consumption
     except Exception as e:
