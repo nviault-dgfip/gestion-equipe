@@ -50,6 +50,9 @@ mois_fr = {
 
 file_path = 'planning_equipe_format_NN_2026.xlsx'
 
+# --- CONFIGURATION BILAN ---
+bilan_sheet_name = "Bilan année"
+
 # --- STYLES ---
 grey_fill = PatternFill(start_color='E0E0E0', end_color='E0E0E0', fill_type='solid') # Week-end
 header_fill = PatternFill(start_color='4472C4', end_color='4472C4', fill_type='solid') # Bleu Entête
@@ -93,6 +96,7 @@ with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
     # =========================================================================
    
     nb_members = len(team_members)
+    month_totals_rows = {} # Pour stocker la ligne de total de chaque mois
    
     for month in range(1, 13):
        
@@ -164,5 +168,66 @@ with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
             for c in range(1, total_cols + 1):
                 ws.cell(row=row_end, column=c).border = Border(bottom=Side(style='thin', color="DDDDDD"))
 
-print(f"Fichier généré avec le format de date 'NN J MMM AA' : {file_path}")
+        # --- C. LIGNES DE TOTAL ---
+        row_total_presence = (num_days * 2) + 2
+        row_total_absence = row_total_presence + 1
+        month_totals_rows[month] = row_total_presence
+
+        ws.cell(row=row_total_presence, column=1).value = "Total Présences (jours)"
+        ws.cell(row=row_total_absence, column=1).value = "Total Absences (jours)"
+
+        for r in [row_total_presence, row_total_absence]:
+            ws.cell(row=r, column=1).font = Font(bold=True)
+            ws.cell(row=r, column=1).alignment = Alignment(horizontal='left')
+            ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=2)
+
+        for i in range(nb_members):
+            col_idx = 3 + i
+            col_letter = get_column_letter(col_idx)
+
+            # Formules de total
+            range_str = f"{col_letter}2:{col_letter}{1 + (num_days * 2)}"
+            ws.cell(row=row_total_presence, column=col_idx).value = f"=COUNTIF({range_str}, \"X\")*0.5"
+            ws.cell(row=row_total_absence, column=col_idx).value = f"=COUNTIF({range_str}, \"0\")*0.5"
+
+            ws.cell(row=row_total_presence, column=col_idx).font = Font(bold=True)
+            ws.cell(row=row_total_absence, column=col_idx).font = Font(bold=True)
+
+    # =========================================================================
+    # 3. CRÉATION DE L'ONGLET BILAN ANNUEL
+    # =========================================================================
+
+    # Structure : Membre | Janvier | Février | ... | Décembre | Total
+    headers_bilan = ["Membre"] + [mois_fr[m] for m in range(1, 13)] + ["TOTAL"]
+    df_bilan = pd.DataFrame(columns=headers_bilan)
+    df_bilan.to_excel(writer, sheet_name=bilan_sheet_name, index=False)
+    ws_b = writer.sheets[bilan_sheet_name]
+
+    # Style entête Bilan
+    for c in range(1, len(headers_bilan) + 1):
+        cell = ws_b.cell(row=1, column=c)
+        cell.fill = header_fill
+        cell.font = text_white_bold
+        ws_b.column_dimensions[get_column_letter(c)].width = 15
+
+    for i, member in enumerate(team_members):
+        row_idx = i + 2
+        ws_b.cell(row=row_idx, column=1).value = member
+
+        # Formules pour chaque mois
+        for m_idx in range(1, 13):
+            col_idx = m_idx + 1
+            sheet_m = f"{mois_fr[m_idx]}_{year}"
+            # On pointe vers la cellule de total présence du membre dans l'onglet du mois
+            member_col_letter = get_column_letter(3 + i)
+            total_row = month_totals_rows[m_idx]
+            ws_b.cell(row=row_idx, column=col_idx).value = f"='{sheet_m}'!{member_col_letter}{total_row}"
+
+        # Total annuel
+        start_col = get_column_letter(2)
+        end_col = get_column_letter(13)
+        ws_b.cell(row=row_idx, column=14).value = f"=SUM({start_col}{row_idx}:{end_col}{row_idx})"
+        ws_b.cell(row=row_idx, column=14).font = Font(bold=True)
+
+print(f"Fichier généré avec le format de date 'NN J MMM AA' et lignes de totaux : {file_path}")
 
